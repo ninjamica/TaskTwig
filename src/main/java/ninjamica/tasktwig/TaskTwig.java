@@ -1,15 +1,15 @@
 package ninjamica.tasktwig;
 
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
-import ninjamica.tasktwig.task.Task;
 import tools.jackson.core.*;
+import tools.jackson.core.exc.JacksonIOException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
-import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 import java.io.*;
 import java.time.LocalDate;
@@ -26,33 +26,26 @@ public class TaskTwig implements Serializable {
         public static final int VERSION = 0;
     }
 
-    private static LocalTime dayStart = LocalTime.MIN;
+    private static LocalTime dayStart = LocalTime.of(5,00);
 
     private ObservableMap<LocalDate, Sleep> sleepRecords;
     private ObservableList<Workout> workoutRecords;
     private ObservableList<Exercise> exerciseList;
     private ObservableList<Task> taskList;
     private ObservableList<TwigList> twigLists;
-    private LocalDateTime sleepStart;
-    private LocalDateTime workoutStart;
+    private ObservableList<Routine> routineList;
+    private ObservableMap<LocalDate, Journal> journalMap;
+    private final ObjectProperty<LocalDateTime> sleepStart = new SimpleObjectProperty<>();
+    private final ObjectProperty<LocalDateTime> workoutStart = new SimpleObjectProperty<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
 
     public TaskTwig() {
-//        PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
-//                .allowIfSubType(Task.class)
-//                .build();
-
-
-//        mapper = JsonMapper.builder()
-//                .activateDefaultTyping(typeValidator, DefaultTyping.JAVA_LANG_OBJECT, JsonTypeInfo.As.PROPERTY)
-//                .activateDefaultTypingAsProperty(typeValidator, DefaultTyping.JAVA_LANG_OBJECT, "@name")
-//                .configure(MapperFeature.USE_STATIC_TYPING, false)
-//                .build();
-//        mapper.serializationConfig().
-
         this.readFromFile();
 
+//        routineList = FXCollections.observableArrayList();
+//        routineList.add(new Routine("test1", LocalTime.of(6,00), null, new TwigInterval.DailyInterval()));
+//        routineList.add(new Routine("test2", null, LocalTime.of(18,30), new TwigInterval.WeekInterval(DayOfWeek.MONDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)));
     }
 
     public static void setDayStart(LocalTime dayStart) {
@@ -79,7 +72,7 @@ public class TaskTwig implements Serializable {
     }
 
     public void startSleep(LocalDateTime sleepStart) {
-        this.sleepStart = sleepStart;
+        this.sleepStart.setValue(sleepStart);
     }
 
     public void finishSleep() {
@@ -87,15 +80,15 @@ public class TaskTwig implements Serializable {
     }
 
     public void finishSleep(LocalDateTime finishTime) {
-        sleepRecords.put(finishTime.toLocalDate().minusDays(1), new Sleep(sleepStart, finishTime));
-        sleepStart = null;
+        sleepRecords.put(finishTime.toLocalDate().minusDays(1), new Sleep(sleepStart.getValue(), finishTime));
+        sleepStart.setValue(null);
     }
 
     public boolean isSleeping() {
-        return this.sleepStart != null;
+        return this.sleepStart.getValue() != null;
     }
 
-    public LocalDateTime sleepStart() {
+    public ReadOnlyObjectProperty<LocalDateTime> sleepStart() {
         return this.sleepStart;
     }
 
@@ -105,22 +98,22 @@ public class TaskTwig implements Serializable {
 
     public void startWorkout() {
         this.startWorkout(LocalDateTime.now());
-
     }
+
     public void startWorkout(LocalDateTime startTime) {
-        workoutStart = startTime;
+        workoutStart.setValue(startTime);
     }
 
     public void finishWorkout(Map<Exercise, Integer> exercises, LocalDateTime finishTime) {
-        workoutRecords.add(new Workout(workoutStart, finishTime, exercises));
-        workoutStart = null;
+        workoutRecords.add(new Workout(workoutStart.getValue(), finishTime, exercises));
+        workoutStart.setValue(null);
     }
 
     public boolean isWorkingOut() {
-        return workoutStart != null;
+        return workoutStart.getValue() != null;
     }
 
-    public LocalDateTime workoutStart() {
+    public ReadOnlyObjectProperty<LocalDateTime> workoutStart() {
         return workoutStart;
     }
 
@@ -148,10 +141,6 @@ public class TaskTwig implements Serializable {
         return sleepRecords.get(date);
     }
 
-//    public List<Workout> getWorkoutRecords(LocalDate date) {
-//        return workoutRecords.get(date);
-//    }
-
     public void addTask(Task task) {
         taskList.add(task);
     }
@@ -160,25 +149,20 @@ public class TaskTwig implements Serializable {
         taskList.get(index).setCompletion(true);
     }
 
-    public List<Task> getTodaysTasks() {
-        ArrayList<Task> tasks = new ArrayList<>();
-        long today = LocalDate.now().toEpochDay();
-
-        for (Task task : taskList) {
-            if (task.nextDueDate().toEpochDay() >= today) {
-                tasks.add(task);
-            }
-        }
-
-        return tasks;
-    }
-
     public ObservableList<Task> taskList() {
         return taskList;
     }
 
     public ObservableList<TwigList> twigLists() {
         return twigLists;
+    }
+
+    public ObservableList<Routine> routineList() {
+        return routineList;
+    }
+
+    public ObservableMap<LocalDate, Journal> journalMap() {
+        return journalMap;
     }
 
     public void printSleepRecords() {
@@ -216,7 +200,7 @@ public class TaskTwig implements Serializable {
                 System.out.println("\t" + task.name() + " done!");
             }
             else {
-                System.out.println("\t" + task.name() + " due " + task.nextDueDate() + ((task.dueTime() == null) ? "" : (" at " + task.dueTime())));
+                System.out.println("\t" + task.name() + " due " + task.interval().next() + ((task.dueTime() == null) ? "" : (" at " + task.dueTime())));
             }
         }
     }
@@ -226,12 +210,14 @@ public class TaskTwig implements Serializable {
         File workoutJson = new File("data/workout.json");
         File taskJson = new File("data/task.json");
         File listJson = new File("data/list.json");
+        File routineJson = new File("data/routine.json");
+        File journalJson = new File("data/journal.json");
 
         try (JsonGenerator generator = mapper.createGenerator(sleepJson, JsonEncoding.UTF8)) {
             generator.writeStartObject();
 
             generator.writeNumberProperty("version", Sleep.VERSION);
-            generator.writePOJOProperty("sleepProgressStart", this.sleepStart);
+            generator.writePOJOProperty("sleepProgressStart", this.sleepStart.getValue());
             generator.writePOJOProperty("sleepRecords", this.sleepRecords);
             generator.writeEndObject();
         }
@@ -240,7 +226,7 @@ public class TaskTwig implements Serializable {
             generator.writeStartObject();
 
             generator.writeNumberProperty("version", Workout.VERSION);
-            generator.writePOJOProperty("workoutProgressStart", this.workoutStart);
+            generator.writePOJOProperty("workoutProgressStart", this.workoutStart.getValue());
             generator.writePOJOProperty("exercises", this.exerciseList);
             generator.writePOJOProperty("workoutRecords", this.workoutRecords);
 
@@ -264,11 +250,37 @@ public class TaskTwig implements Serializable {
         try (JsonGenerator generator = mapper.createGenerator(listJson, JsonEncoding.UTF8)) {
             generator.writeStartObject();
 
+            generator.writeNumberProperty("version", TwigList.VERSION);
+
             generator.writeArrayPropertyStart("lists");
             for (TwigList list : twigLists) {
                 generator.writePOJO(list);
             }
             generator.writeEndArray();
+
+            generator.writeEndObject();
+        }
+
+        try (JsonGenerator generator = mapper.createGenerator(routineJson, JsonEncoding.UTF8)) {
+            generator.writeStartObject();
+
+            generator.writeNumberProperty("version", Routine.VERSION);
+
+            generator.writeArrayPropertyStart("routines");
+            for (Routine routine : routineList) {
+                generator.writePOJO(routine);
+            }
+            generator.writeEndArray();
+
+            generator.writeEndObject();
+        }
+
+        try (JsonGenerator generator = mapper.createGenerator(journalJson, JsonEncoding.UTF8)) {
+            generator.writeStartObject();
+
+            generator.writeNumberProperty("version", Journal.VERSION);
+
+            generator.writePOJOProperty("journals", this.journalMap);
 
             generator.writeEndObject();
         }
@@ -279,6 +291,8 @@ public class TaskTwig implements Serializable {
         File workoutJson = new File("data/workout.json");
         File taskJson = new File("data/task.json");
         File listJson = new File("data/list.json");
+        File routineJson = new File("data/routine.json");
+        File journalJson = new File("data/journal.json");
 
         try {
             // Parse sleep records
@@ -289,15 +303,16 @@ public class TaskTwig implements Serializable {
 
                 assertEqual(parser.nextName(), "sleepProgressStart");
                 if (parser.nextToken() == JsonToken.VALUE_STRING)
-                    this.sleepStart = LocalDateTime.parse(parser.getString());
+                    this.sleepStart.setValue(LocalDateTime.parse(parser.getString()));
                 else
                     assertEqual(parser.currentToken(), JsonToken.VALUE_NULL);
 
                 assertEqual(parser.nextName(), "sleepRecords");
                 parser.nextToken();
-                this.sleepRecords = FXCollections.observableMap(parser.readValueAs(new TypeReference<>() {}));
-            } catch (JsonAssertException e) {
-                this.sleepStart = null;
+                this.sleepRecords = FXCollections.observableMap(parser.readValueAs(new TypeReference<SortedMap<LocalDate, Sleep>>() {}));
+            }
+            catch (JsonAssertException | JacksonIOException e) {
+                this.sleepStart.setValue(null);
                 this.sleepRecords = FXCollections.observableMap(new TreeMap<>());
             }
 
@@ -309,7 +324,7 @@ public class TaskTwig implements Serializable {
 
                 assertEqual(parser.nextName(), "workoutProgressStart");
                 if (parser.nextToken() == JsonToken.VALUE_STRING)
-                    this.workoutStart = LocalDateTime.parse(parser.getString());
+                    this.workoutStart.setValue(LocalDateTime.parse(parser.getString()));
                 else
                     assertEqual(parser.currentToken(), JsonToken.VALUE_NULL);
 
@@ -320,8 +335,8 @@ public class TaskTwig implements Serializable {
                 assertEqual(parser.nextName(), "workoutRecords");
                 parser.nextToken();
                 this.workoutRecords = FXCollections.observableList(parser.readValueAs(new TypeReference<>() {}));
-            } catch (JsonAssertException e) {
-                this.workoutStart = null;
+            } catch (JsonAssertException | JacksonIOException e) {
+                this.workoutStart.setValue(null);
                 this.exerciseList = FXCollections.observableArrayList();
                 this.workoutRecords = FXCollections.observableArrayList();
             }
@@ -335,18 +350,48 @@ public class TaskTwig implements Serializable {
                 assertEqual(parser.nextName(), "tasks");
                 parser.nextToken();
                 this.taskList = FXCollections.observableList(parser.readValueAs(new TypeReference<>() {}));
-            } catch (JsonAssertException e) {
+            } catch (JsonAssertException | JacksonIOException e) {
                 this.taskList = FXCollections.observableArrayList();
             }
 
+            // Parse lists
             this.twigLists = FXCollections.observableArrayList();
             try (JsonParser parser = mapper.createParser(listJson)) {
                 parser.nextToken();
+                assertEqual(parser.nextName(), "version");
+                assertVersion(parser.nextIntValue(0), TwigList.class);
+
                 assertEqual(parser.nextName(), "lists");
                 parser.nextToken();
                 this.twigLists = FXCollections.observableList(parser.readValueAs(new TypeReference<>() {}));
-            } catch (JsonAssertException e) {
+            } catch (JsonAssertException | JacksonIOException e) {
                 this.twigLists = FXCollections.observableArrayList();
+            }
+
+            // Parse routines
+            try (JsonParser parser = mapper.createParser(routineJson)) {
+                parser.nextToken();
+                assertEqual(parser.nextName(), "version");
+                assertVersion(parser.nextIntValue(0), Routine.class);
+
+                assertEqual(parser.nextName(), "routines");
+                parser.nextToken();
+                this.routineList = FXCollections.observableList(parser.readValueAs(new TypeReference<>() {}));
+            } catch (JsonAssertException | JacksonIOException e) {
+                this.routineList = FXCollections.observableArrayList();
+            }
+
+            // Parse journals
+            try (JsonParser parser = mapper.createParser(journalJson)) {
+                parser.nextToken();
+                assertEqual(parser.nextName(), "version");
+                assertVersion(parser.nextIntValue(0), Journal.class);
+
+                assertEqual(parser.nextName(), "journals");
+                parser.nextToken();
+                this.journalMap = FXCollections.observableMap(parser.readValueAs(new TypeReference<SortedMap<LocalDate, Journal>>() {}));
+            } catch (JsonAssertException | JacksonIOException e) {
+                this.journalMap = FXCollections.observableMap(new TreeMap<>());
             }
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(e);
@@ -504,11 +549,11 @@ public class TaskTwig implements Serializable {
                     break;
 
                 case "status":
-                    if (tracker.sleepStart != null) {
-                        System.out.println("Sleeping, started " + tracker.sleepStart.format(DateTimeFormatter.ISO_DATE_TIME));
+                    if (tracker.sleepStart.getValue() != null) {
+                        System.out.println("Sleeping, started " + tracker.sleepStart.getValue().format(DateTimeFormatter.ISO_DATE_TIME));
                     }
-                    if (tracker.workoutStart != null) {
-                        System.out.println("Working out, started " + tracker.workoutStart.format(DateTimeFormatter.ISO_DATE_TIME));
+                    if (tracker.workoutStart.getValue() != null) {
+                        System.out.println("Working out, started " + tracker.workoutStart.getValue().format(DateTimeFormatter.ISO_DATE_TIME));
                     }
                     else {
                         System.out.println("Nothing in progress");

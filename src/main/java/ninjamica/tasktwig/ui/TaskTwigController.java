@@ -3,23 +3,23 @@ package ninjamica.tasktwig.ui;
 import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
+import javafx.collections.MapChangeListener;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.scene.Node;
 import javafx.scene.chart.AreaChart;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
-import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.input.*;
+import javafx.scene.layout.*;
+import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 import javafx.util.StringConverter;
 import ninjamica.tasktwig.*;
-import ninjamica.tasktwig.task.*;
+import org.controlsfx.control.PopOver;
 
 import java.io.IOException;
 import java.time.DayOfWeek;
@@ -31,6 +31,17 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 public class TaskTwigController {
+
+    @FXML
+    private ListView<Routine> todayRoutineListView;
+    @FXML
+    private ListView<Task> todayTaskListView;
+    @FXML
+    private Button todaySleepButton;
+    @FXML
+    private Button todayExerciseButton;
+    @FXML
+    private TextArea todayJournalTextArea;
 
     @FXML
     private VBox sleepVBox;
@@ -58,6 +69,7 @@ public class TaskTwigController {
     private AreaChart<String, Float> sleepLenChart;
     @FXML
     private NumberAxis  sleepTimeNumAxis;
+
     @FXML
     private Button workoutButton;
     @FXML
@@ -70,6 +82,7 @@ public class TaskTwigController {
     private TableColumn<Workout, Float> workoutLengthCol;
     @FXML
     private TableColumn<Workout, String> workoutExerciseCol;
+
     @FXML
     private TableView<Task> taskTableView;
     @FXML
@@ -83,6 +96,24 @@ public class TaskTwigController {
     @FXML
     private TreeView<Object> listTree;
 
+    @FXML
+    private TableView<Routine> routineTable;
+    @FXML
+    private TableColumn<Routine, String> routineNameCol;
+    @FXML
+    private TableColumn<Routine, TwigInterval> routineIntervalCol;
+    @FXML
+    private TableColumn<Routine, LocalTime> routineStartCol;
+    @FXML
+    private TableColumn<Routine, LocalTime> routineEndCol;
+    @FXML
+    private Button routineButton;
+
+    @FXML
+    private ListView<LocalDate> journalListView;
+    @FXML
+    private TextArea journalTextArea;
+
     private final TaskTwig twig = new TaskTwig();
     private Stage stage;
     private final XYChart.Series<String, Float> sleepLenChartData = new XYChart.Series<>();
@@ -95,11 +126,129 @@ public class TaskTwigController {
     private static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("h:mm a");
     private static final String[] dayOfWeekShorthand = {"M", "T", "W", "Th", "F", "Sa", "Su"};
     private static final LocalTime timeChartRefTime = LocalTime.of(12, 00);
+    private static final DataFormat DRAG_DROP_MIME_FORMAT = new DataFormat("application/x-java-serialized-object");
 
     @FXML
     public void initialize() {
 
         sleepVBox.getChildren().remove(sleepTimeChartPane);
+        if (!twig.journalMap().containsKey(TaskTwig.effectiveDate())) {
+            twig.journalMap().put(TaskTwig.effectiveDate(), new Journal());
+        }
+        todayJournalTextArea.textProperty().bindBidirectional(twig.journalMap().get(TaskTwig.effectiveDate()).textProperty());
+
+        todayRoutineListView.setCellFactory(col -> new ListCell<>() {
+            private final CheckBox checkBox = new CheckBox();
+            private final Text name = new Text();
+            private final AnchorPane pane = new AnchorPane();
+            {
+                name.setStyle("-fx-fill: lightgray");
+                this.setOnMouseEntered(event -> {name.setUnderline(true);});
+                this.setOnMouseExited(event -> {name.setUnderline(false);});
+//                this.setCursor(Cursor.HAND);
+
+                checkBox.selectedProperty().addListener((observable, oldValue, newValue) -> {
+                    this.getItem().setDone(newValue);
+                    if (newValue) {
+                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+                    }
+                    else {
+                        name.setStyle("-fx-fill: lightgray");
+                    }
+                });
+
+                this.setOnMouseClicked(event -> {checkBox.setSelected(!checkBox.isSelected());});
+
+                pane.getChildren().addAll(checkBox, name);
+                name.setLayoutX(25);
+                name.setLayoutY(14);
+            }
+
+            @Override
+            protected void updateItem(Routine item, boolean empty) {
+                super.updateItem(item, empty);
+
+                setText(null);
+                name.textProperty().unbind();
+                if (item == null || empty) {
+                    setGraphic(null);
+                }
+                else {
+                    name.textProperty().bind(item.getName());
+                    checkBox.setSelected(item.isDoneToday());
+                    setGraphic(pane);
+                    setBackground(Background.EMPTY);
+                }
+            }
+        });
+        todayRoutineListView.setSelectionModel(null);
+        todayRoutineListView.setItems(twig.routineList().filtered(item -> item.interval().isToday()));
+
+        todayTaskListView.setCellFactory(col -> new ListCell<Task>() {
+            private final CheckBox checkBox = new CheckBox();
+            private final Text name = new Text();
+            private final Text dueText = new Text();
+            private final HBox pane = new HBox(7);
+            {
+                name.setStyle("-fx-fill: lightgray");
+                dueText.setStyle("-fx-fill: #a1a1a1");
+                this.setOnMouseEntered(event -> {name.setUnderline(true); dueText.setUnderline(true);});
+                this.setOnMouseExited(event -> {name.setUnderline(false); dueText.setUnderline(false);});
+//                this.setCursor(Cursor.HAND);
+
+                checkBox.selectedProperty().addListener((observable, oldValue, newValue) -> {
+                    this.getItem().setCompletion(newValue);
+                    if (newValue) {
+                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+                        dueText.setVisible(false);
+                    }
+                    else {
+                        name.setStyle("-fx-fill: lightgray");
+                        dueText.setVisible(true);
+                    }
+                });
+
+                this.setOnMouseClicked(event -> {checkBox.setSelected(!checkBox.isSelected());});
+
+                pane.getChildren().addAll(checkBox, name, dueText);
+            }
+
+            @Override
+            protected void updateItem(Task item, boolean empty) {
+                super.updateItem(item, empty);
+
+                setText(null);
+                name.textProperty().unbind();
+                dueText.textProperty().unbind();
+
+                if (item == null || empty) {
+                    setGraphic(null);
+                }
+                else {
+                    name.textProperty().bind(item.nameProperty());
+                    checkBox.setSelected(item.isDone());
+
+                    if (item.dueTime() != null) {
+                        dueText.setText(item.interval().next().format(shortDateFormat) + " at " + item.dueTime().format(timeFormat));
+                    }
+                    else {
+                        dueText.setText(item.interval().next().format(shortDateFormat));
+                    }
+
+                    setGraphic(pane);
+                    setBackground(Background.EMPTY);
+                }
+            }
+        });
+        todayTaskListView.setSelectionModel(null);
+        todayTaskListView.setItems(twig.taskList().filtered(item -> {
+            if (item.interval().next() == null) {
+                return false;
+            }
+            return !TaskTwig.effectiveDate().isAfter(item.interval().next());
+        }));
+
+        twig.sleepStart().addListener((observable, oldValue, newValue) -> setSleepStatusLabel(newValue));
 
         sleepDateCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().end().toLocalDate().minusDays(1)));
         sleepStartCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().start().toLocalTime()));
@@ -148,6 +297,12 @@ public class TaskTwigController {
         sleepStartChartData.setName("Sleep Start");
         sleepEndChartData.setName("SleepEnd");  
         refillSleepCharts();
+        twig.sleepRecords().addListener((MapChangeListener<LocalDate, Sleep>) change -> {
+            refillSleepTable();
+            refillSleepCharts();
+        });
+
+        twig.workoutStart().addListener((observable, oldValue, newValue) -> setWorkoutStatusLabel(newValue));
 
         workoutDateCol.setCellValueFactory(workout -> new SimpleStringProperty(workout.getValue().start().toLocalDate().format(dateFormat)));
         workoutLengthCol.setCellValueFactory(workout -> new SimpleFloatProperty(workout.getValue().length().toSeconds() / 60f).asObject());
@@ -155,16 +310,16 @@ public class TaskTwigController {
 
         workoutTableView.setItems(twig.workoutRecords());
 
-        setSleepStatusLabel();
-        setWorkoutStatusLabel();
+        setSleepStatusLabel(twig.sleepStart().getValue());
+        setWorkoutStatusLabel(twig.workoutStart().getValue());
 
         taskDoneCol.setCellValueFactory(task -> new SimpleBooleanProperty(task.getValue().isDone()));
         taskDoneCol.setCellFactory(col -> new TaskDoneCell());
 
         taskNameCol.setCellValueFactory(task -> new SimpleStringProperty(task.getValue().name()));
         taskDateTimeCol.setCellValueFactory(task -> {
-            if(task.getValue().nextDueDate() != null) {
-                String strVal = task.getValue().nextDueDate().format(dateFormat);
+            if(task.getValue().interval().next() != null) {
+                String strVal = task.getValue().interval().next().format(dateFormat);
 
                 if (task.getValue().dueTime() != null) {
                     strVal += " " + task.getValue().dueTime().format(timeFormat);
@@ -177,19 +332,19 @@ public class TaskTwigController {
             }
         });
         taskRepeatCol.setCellValueFactory(task -> {
-            switch (task.getValue()) {
-                case DailyTask dailyTask -> {
+            switch (task.getValue().interval()) {
+                case TwigInterval.DailyInterval dailyTask -> {
                     return new SimpleStringProperty("Daily");
                 }
-                case WeeklyTask weeklyTask -> {
+                case TwigInterval.WeeklyInterval weeklyTask -> {
                     StringBuilder dayString = new StringBuilder();
-                    for (DayOfWeek day : weeklyTask.getDaysOfWeek()) {
+                    for (DayOfWeek day : weeklyTask.daysOfWeek()) {
                         dayString.append(dayOfWeekShorthand[day.ordinal()]).append(" ");
                     }
                     dayString.deleteCharAt(dayString.length() - 1);
                     return new SimpleStringProperty(dayString.toString());
                 }
-                case MonthlyTask monthlyTask -> {
+                case TwigInterval.MonthlyInterval monthlyTask -> {
                     StringBuilder monthString = new StringBuilder();
                     for (int day : monthlyTask.getDueDays()) {
                         monthString.append(day).append(", ");
@@ -321,6 +476,148 @@ public class TaskTwigController {
         });
         listTree.setContextMenu(new ContextMenu(addItem));
         populateTwigLists();
+
+
+        routineTable.setRowFactory(table -> {
+            TableRow<Routine> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+               if (!row.isEmpty() && row.getIndex() != -1) {
+                   if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                       Node content = new RoutineContent(table.getItems().get(row.getIndex()));
+                       PopOver popOver = new PopOver(content);
+                       popOver.setArrowLocation(PopOver.ArrowLocation.TOP_LEFT);
+                       popOver.show(row);
+                       popOver.getRoot().getStylesheets().add(darkStylesheet);
+                   }
+               }
+            });
+
+            row.setOnDragDetected(event -> {
+                if (!row.isEmpty() && row.getIndex() != -1) {
+                    Dragboard db = row.startDragAndDrop(TransferMode.MOVE);
+                    db.setDragView(row.snapshot(null, null));
+                    ClipboardContent cc =  new ClipboardContent();
+                    cc.put(DRAG_DROP_MIME_FORMAT, row.getIndex());
+                    db.setContent(cc);
+                    event.consume();
+                }
+            });
+
+            row.setOnDragOver(event -> {
+                Dragboard db = event.getDragboard();
+                if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
+                    if (row.getIndex() != (int)db.getContent(DRAG_DROP_MIME_FORMAT)) {
+                        event.acceptTransferModes(TransferMode.MOVE);
+                        event.consume();
+
+                        if (!row.isEmpty() || row.getIndex() == table.getItems().size()) {
+                            row.setStyle("-fx-border-color: -fx-accent; -fx-border-width: 2 0 0 0");
+                        }
+                    }
+                }
+            });
+
+            row.setOnDragExited(event -> {
+                row.setStyle("");
+                event.consume();
+            });
+
+            row.setOnDragDropped(event -> {
+                Dragboard db = event.getDragboard();
+                if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
+                    int oldIndex =  (int)db.getContent(DRAG_DROP_MIME_FORMAT);
+                    Routine draggedItem = table.getItems().remove(oldIndex);
+
+                    int newIndex;
+                    if (row.isEmpty()) {
+                        newIndex = table.getItems().size();
+                    }
+                    else {
+                        newIndex = row.getIndex();
+                        if (newIndex >= oldIndex) {
+                            newIndex--;
+                        }
+                    }
+                    table.getItems().add(newIndex, draggedItem);
+
+                    event.setDropCompleted(true);
+                    event.consume();
+                }
+            });
+
+            return row;
+        });
+        routineNameCol.setCellValueFactory(routine -> routine.getValue().getName());
+        routineIntervalCol.setCellValueFactory(routine -> routine.getValue().getInterval());
+        routineStartCol.setCellValueFactory(routine -> routine.getValue().getStartTime());
+        routineEndCol.setCellValueFactory(routine -> routine.getValue().getEndTime());
+        routineIntervalCol.setCellFactory(col -> new TableCell<Routine, TwigInterval>() {
+            @Override
+            protected void updateItem(TwigInterval item, boolean empty) {
+                super.updateItem(item, empty);
+                if (item == null || empty) {
+                    setText(null);
+                }
+                else {
+                    switch (item) {
+                        case TwigInterval.DailyInterval daily -> {
+                            setText("Daily");
+                        }
+                        case TwigInterval.WeeklyInterval week -> {
+                            setWeekText(week);
+                            for (BooleanProperty prop : week.dayOfWeekMapProperty()) {
+                                prop.addListener((observable, oldValue, newValue) -> setWeekText(week));
+                            }
+                        }
+                        default -> {
+                            setText(null);
+                        }
+                    }
+                }
+            }
+
+            private void setWeekText(TwigInterval.WeeklyInterval week) {
+                StringBuilder retVal = new StringBuilder("weekly:");
+                for (DayOfWeek day : DayOfWeek.values()) {
+                    if (week.getDayOfWeekMap()[day.ordinal()]) {
+                        retVal.append(" ").append(dayOfWeekShorthand[day.ordinal()]);
+                    }
+                }
+                setText(retVal.toString());
+            }
+        });
+
+        routineStartCol.setCellFactory(column -> new timeTableCell<>(timeFormat) {});
+        routineEndCol.setCellFactory(column -> new timeTableCell<>(timeFormat) {});
+
+        routineTable.setItems(twig.routineList());
+
+        journalListView.setCellFactory(list -> new ListCell<>() {
+            @Override
+            protected void updateItem(LocalDate item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (item == null || empty) {
+                    setText(null);
+                }
+                else {
+                    setText(item.format(dateFormat));
+                }
+            }
+        });
+        journalListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            if (oldValue != null && twig.journalMap().containsKey(oldValue)) {
+                journalTextArea.textProperty().unbindBidirectional(twig.journalMap().get(oldValue).textProperty());
+            }
+
+            if (newValue != null && twig.journalMap().containsKey(newValue)) {
+                journalTextArea.textProperty().bindBidirectional(twig.journalMap().get(newValue).textProperty());
+            }
+        });
+        twig.journalMap().addListener((MapChangeListener<LocalDate, Journal>) change -> {
+            journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()));
+        });
+        journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()));
     }
 
     public void setStage(Stage stage) {
@@ -330,6 +627,40 @@ public class TaskTwigController {
     public void closeTwig() {
         twig.saveToFile();
     }
+
+
+//    private void updateTodaySleepButton() {
+//        if (twig.isSleeping()) {
+//            todaySleepButton.setText("Wake Up");
+//        }
+//        else {
+//            todaySleepButton.setText("Go To Sleep");
+//        }
+//    }
+
+//    @FXML
+//    protected void onTodaySleepButtonPressed(ActionEvent event) {
+//        if (twig.isSleeping()) {
+//            TimeDateDialog dialog = new TimeDateDialog(stage, "Wake Up");
+//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
+//            timeResult.ifPresent(twig::finishSleep);
+//        }
+//        else {
+//            TimeDateDialog dialog = new TimeDateDialog(stage, "Bed");
+//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
+//            timeResult.ifPresent(twig::startSleep);
+//        }
+//        updateTodaySleepButton();
+//    }
+
+//    private void updateTodayExerciseButton() {
+//        if (twig.isWorkingOut()) {
+//            todayExerciseButton.setText("Finish");
+//        }
+//        else {
+//            todayExerciseButton.setText("Start");
+//        }
+//    }
 
     private void populateTwigLists() {
         listTree.getRoot().getChildren().clear();
@@ -377,7 +708,6 @@ public class TaskTwigController {
         sleepTableView.refresh();
 //        sleepTableView.getSortOrder().clear();
 //        sleepTableView.getSortOrder().add(sleepDateCol);
-        refillSleepCharts();
     }
 
     private void refillSleepCharts() {
@@ -412,13 +742,15 @@ public class TaskTwigController {
         return new SimpleStringProperty(builder.toString());
     }
 
-    private void setSleepStatusLabel() {
-        if (twig.isSleeping()) {
+    private void setSleepStatusLabel(LocalDateTime time) {
+        if (time != null) {
             sleepButton.setText("Finish");
-            sleepStatusLabel.setText("Status: sleeping, started "+ twig.sleepStart().format(timeFormat));
+            todaySleepButton.setText("Wake Up");
+            sleepStatusLabel.setText("Status: sleeping, started "+ time.format(timeFormat));
         }
         else {
             sleepButton.setText("Start");
+            todaySleepButton.setText("Go To Bed");
             sleepStatusLabel.setText("Status: not sleeping");
         }
     }
@@ -429,11 +761,7 @@ public class TaskTwigController {
             TimeDateDialog dialog = new TimeDateDialog(stage, "Bed");
             Optional<LocalDateTime> timeResult = dialog.showAndWait();
 
-            if(timeResult.isPresent()) {
-                LocalDateTime startTime = timeResult.get();
-                twig.startSleep(startTime);
-                setSleepStatusLabel();
-            }
+            timeResult.ifPresent(twig::startSleep);
         }
         else {
             TimeDateDialog dialog = new TimeDateDialog(stage, "Wake-Up");
@@ -444,11 +772,10 @@ public class TaskTwigController {
 
                 LocalDate lastNight = finishTime.toLocalDate().minusDays(1);
                 if (twig.sleepRecords().containsKey(lastNight)) {
-                    Alert confirmation = createAlert(
+                    Alert confirmDialog = createAlert(
                             Alert.AlertType.CONFIRMATION, "Overwrite Sleep Record?",
                             "Overwrite Sleep Record?",
                             "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?");
-                    Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
 
                     Optional<ButtonType> result = confirmDialog.showAndWait();
                     if (result.isPresent() && result.get() != ButtonType.YES) {
@@ -457,8 +784,6 @@ public class TaskTwigController {
                 }
 
                 twig.finishSleep(finishTime);
-                setSleepStatusLabel();
-                refillSleepTable();
             }
         }
     }
@@ -471,18 +796,19 @@ public class TaskTwigController {
             Optional<ButtonType> result = confirmDialog.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.YES) {
                 twig.startSleep(null);
-                setSleepStatusLabel();
             }
         }
     }
 
-    private void setWorkoutStatusLabel() {
-        if (twig.isWorkingOut()) {
+    private void setWorkoutStatusLabel(LocalDateTime time) {
+        if (time != null) {
             workoutButton.setText("Finish");
-            workoutStatusLabel.setText("Status: working out, started "+twig.workoutStart().format(timeFormat));
+            todayExerciseButton.setText("Finish");
+            workoutStatusLabel.setText("Status: working out, started " + time.format(timeFormat));
         }
         else {
             workoutButton.setText("Start");
+            todayExerciseButton.setText("Start");
             workoutStatusLabel.setText("Status: not working out");
         }
     }
@@ -493,11 +819,7 @@ public class TaskTwigController {
             TimeDateDialog dialog = new TimeDateDialog(stage, "Workout");
             Optional<LocalDateTime> timeResult = dialog.showAndWait();
 
-            if(timeResult.isPresent()) {
-                LocalDateTime startTime = timeResult.get();
-                twig.startWorkout(startTime);
-                setWorkoutStatusLabel();
-            }
+            timeResult.ifPresent(twig::startWorkout);
         }
         else {
             TimeDateDialog timeDialog = new TimeDateDialog(stage, "Workout");
@@ -513,7 +835,6 @@ public class TaskTwigController {
 
                 if (exercises != null) {
                     twig.finishWorkout(exercises, finishTime);
-                    setWorkoutStatusLabel();
 
                     workoutTableView.refresh();
                 }
@@ -529,7 +850,6 @@ public class TaskTwigController {
             Optional<ButtonType> result = confirmDialog.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.YES) {
                 twig.startWorkout(null);
-                setWorkoutStatusLabel();
             }
         }
     }
@@ -562,5 +882,34 @@ public class TaskTwigController {
         alert.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
 
         return alert;
+    }
+
+    @FXML
+    protected void createRoutine() {
+        RoutineDialog dialog = new RoutineDialog(stage);
+        Optional<Routine> routineResult = dialog.showAndWait();
+        routineResult.ifPresent(routine -> {
+            twig.routineList().add(routine);
+        });
+    }
+
+    static class timeTableCell<T> extends TableCell<T, LocalTime> {
+        private final DateTimeFormatter formatter;
+        public timeTableCell(DateTimeFormatter formatter) {
+            super();
+            this.formatter = formatter;
+        }
+
+        @Override
+        protected void updateItem(LocalTime item, boolean empty) {
+            super.updateItem(item, empty);
+
+            if (empty || item == null) {
+                setText(null);
+            }
+            else {
+                setText(formatter.format(item));
+            }
+        }
     }
 }

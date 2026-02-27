@@ -11,6 +11,4 @@ module ninjamica.tasktwig.tasktwig {
     exports ninjamica.tasktwig;
     exports ninjamica.tasktwig.ui;
     opens ninjamica.tasktwig.ui to javafx.fxml;
-    exports ninjamica.tasktwig.task;
-    opens ninjamica.tasktwig.task to javafx.fxml;
 }

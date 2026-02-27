@@ -9,7 +9,8 @@ import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Window;
-import ninjamica.tasktwig.task.*;
+import ninjamica.tasktwig.Task;
+import ninjamica.tasktwig.TwigInterval;
 
 import java.io.IOException;
 import java.time.DayOfWeek;
@@ -113,15 +114,15 @@ public class TaskDialog extends Dialog<TaskDialog.TaskReturn> {
         if (inputTask != null) {
             System.out.println(inputTask.name());
             nameTextField.setText(inputTask.name());
-            switch (inputTask) {
-                case SingleTask singleTask -> {
+            switch (inputTask.interval()) {
+                case TwigInterval.SingleDayInterval singleTask -> {
                     typeChoiceBox.getSelectionModel().select(0);
-                    dueDatePicker.setValue(singleTask.nextDueDate());
+                    dueDatePicker.setValue(singleTask.next());
                 }
-                case DailyTask dailyTask -> {
+                case TwigInterval.DailyInterval dailyTask -> {
                     typeChoiceBox.getSelectionModel().select(1);
                 }
-                case WeeklyTask weeklyTask -> {
+                case TwigInterval.WeeklyInterval weeklyTask -> {
                     typeChoiceBox.getSelectionModel().select(2);
                     dayMButton.setSelected(weeklyTask.getDayOfWeekMap()[0]);
                     dayTButton.setSelected(weeklyTask.getDayOfWeekMap()[1]);
@@ -131,7 +132,7 @@ public class TaskDialog extends Dialog<TaskDialog.TaskReturn> {
                     daySaButton.setSelected(weeklyTask.getDayOfWeekMap()[5]);
                     daySuButton.setSelected(weeklyTask.getDayOfWeekMap()[6]);
                 }
-                case MonthlyTask monthlyTask -> {
+                case TwigInterval.MonthlyInterval monthlyTask -> {
                     typeChoiceBox.getSelectionModel().select(3);
                     StringBuilder dateString = new StringBuilder();
 
@@ -191,10 +192,10 @@ public class TaskDialog extends Dialog<TaskDialog.TaskReturn> {
 
         switch (typeChoiceBox.getValue()) {
             case "Single":
-                return new TaskReturn(button.getButtonData(), new SingleTask(nameTextField.getText(), dueDatePicker.getValue(), dueTime));
+                return new TaskReturn(button.getButtonData(), new Task(nameTextField.getText(), dueTime, new TwigInterval.SingleDayInterval(dueDatePicker.getValue())));
 
             case "Daily":
-                return new TaskReturn(button.getButtonData(), new DailyTask(nameTextField.getText(), dueTime));
+                return new TaskReturn(button.getButtonData(), new Task(nameTextField.getText(), dueTime, new TwigInterval.DailyInterval()));
 
             case "Weekly":
                 List<DayOfWeek> days = new ArrayList<>();
@@ -213,17 +214,17 @@ public class TaskDialog extends Dialog<TaskDialog.TaskReturn> {
                 if (daySuButton.isSelected())
                     days.add(DayOfWeek.SUNDAY);
 
-                return new TaskReturn(button.getButtonData(), new WeeklyTask(nameTextField.getText(), days.toArray(DayOfWeek[]::new), dueTime));
+                return new TaskReturn(button.getButtonData(), new Task(nameTextField.getText(), dueTime, new TwigInterval.WeeklyInterval(days)));
 
             case "Monthly":
                 String[] inputText = dateOfMonthField.getText().split(",");
-                int[] dates = new int[inputText.length];
+                Integer[] dates = new Integer[inputText.length];
 
                 for (int i = 0; i < inputText.length; i++) {
                     dates[i] = Integer.parseInt(inputText[i].strip());
                 }
 
-                return new TaskReturn(button.getButtonData(), new MonthlyTask(nameTextField.getText(), dates,  dueTime));
+                return new TaskReturn(button.getButtonData(), new Task(nameTextField.getText(), dueTime, new TwigInterval.MonthlyInterval(dates)));
 
             default:
                 return null;

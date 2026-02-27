@@ -35,17 +35,14 @@ public class TimeSpinner {
                 switch (editSection) {
                     case HOUR:
                         setValue(getValue().minusHours(steps));
-                        System.out.println("Decrement hour to: " + getValue().format(timeFormat));
                         break;
 
                     case MINUTE:
                         setValue(getValue().minusMinutes(steps));
-                        System.out.println("Decrement minute to: " + getValue().format(timeFormat));
                         break;
 
                     case AM_PM:
                         setValue(getValue().minusHours(12 * (steps % 2)));
-                        System.out.println("Decrement AM/PM to: " + getValue().format(timeFormat));
                         break;
                 }
             }
@@ -55,17 +52,14 @@ public class TimeSpinner {
                 switch (editSection) {
                     case HOUR:
                         setValue(getValue().plusHours(steps));
-                        System.out.println("Increment hour to: " + getValue().format(timeFormat));
                         break;
 
                     case MINUTE:
                         setValue(getValue().plusMinutes(steps));
-                        System.out.println("Increment minute to: " + getValue().format(timeFormat));
                         break;
 
                     case AM_PM:
                         setValue(getValue().plusHours(12 * (steps % 2)));
-                        System.out.println("Increment AM/PM to: " + getValue().format(timeFormat));
                         break;
                 }
             }
@@ -74,13 +68,11 @@ public class TimeSpinner {
         StringConverter<LocalTime> timeConverter = new StringConverter<LocalTime>() {
             @Override
             public String toString(LocalTime time) {
-                System.out.println("StringConverter.toString(): " + time.format(timeFormat));
                 return time.format(timeFormat);
             }
 
             @Override
             public LocalTime fromString(String time) {
-                System.out.println("StringConverter.fromString: " + time + " -> " + LocalTime.parse(time, timeFormat));
                 return LocalTime.parse(time, timeFormat);
             }
         };
@@ -138,19 +130,13 @@ public class TimeSpinner {
         int colonPos = timeSpinner.getEditor().getText().indexOf(":");
         int spacePos = timeSpinner.getEditor().getText().indexOf(" ");
 
-        System.out.println(event.getEventType());
-        System.out.println("caretPos: "+caretPos+" colonPos: "+colonPos+" spacePos: "+ spacePos);
-
         if (caretPos <= colonPos) {
-            System.out.println("Editing HOUR");
             editSection = EditMode.HOUR;
         }
         else if (caretPos <= spacePos) {
-            System.out.println("Editing MINUTE");
             editSection = EditMode.MINUTE;
         }
         else {
-            System.out.println("Editing AM_PM");
             editSection = EditMode.AM_PM;
         }
     }

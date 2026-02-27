@@ -5,7 +5,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
-import ninjamica.tasktwig.task.Task;
+import ninjamica.tasktwig.Task;
 
 public class TaskDoneCell extends TableCell<Task, Boolean> {
     private static Image todoIcon;

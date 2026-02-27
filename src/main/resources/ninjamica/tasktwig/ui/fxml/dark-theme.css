@@ -1,6 +1,7 @@
 /*Source - https://stackoverflow.com/a/58441758*/
 /*Posted by Wesos de Queso, modified by community. See post 'Timeline' for change history*/
 /*Retrieved 2026-02-13, License - CC BY-SA 4.0*/
+/*Modified from source*/
 
 .root {
     -fx-accent: #1e74c6;
@@ -37,6 +38,10 @@
     -fx-border-width: 1px;
 }
 
+.scroll-pane .viewport {
+    -fx-background-color: -fx-control-inner-background;
+}
+
 .scroll-bar{
     -fx-background-color: derive(-fx-base,45%)
 }
@@ -71,4 +76,41 @@
 .table-row-cell{
     -fx-border-color: transparent;
     -fx-table-cell-border-color:transparent;
+}
+
+.popover > .content {
+    -fx-background-color: derive(-fx-base, 35%);
+}
+
+/*.popover > .border {*/
+/*    -fx-background-color: black;*/
+/*    -fx-fill: black;*/
+/*}*/
+
+.popover  {
+    -fx-background-color: transparent;
+}
+
+.popover > .border {
+    -fx-stroke: linear-gradient(to bottom, rgba(0,0,0, .3), rgba(0, 0, 0, .7)) ;
+    -fx-stroke-width: 1;
+    -fx-fill: rgba(255.0,255.0,255.0, .95);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,.2), 10.0, 0.5, 2.0, 2.0);
+}
+
+.popover > .detached {
+}
+
+.popover > .content > .title > .text  {
+    -fx-text-fill: black;
+}
+
+.popover > .content > .title > .icon > .graphics > .circle {
+    -fx-fill: black ;
+    -fx-effect: innershadow(gaussian, rgba(0,0,0,.2), 3, 0.5, 1.0, 1.0);
+}
+
+.popover > .content > .title > .icon > .graphics > .line {
+    -fx-stroke: gray ;
+    -fx-stroke-width: 2;
 }
