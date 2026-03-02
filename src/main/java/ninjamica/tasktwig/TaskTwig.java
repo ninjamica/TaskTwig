@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.*;
 
 public class TaskTwig implements Serializable {
@@ -28,6 +29,7 @@ public class TaskTwig implements Serializable {
 
     private static TaskTwig instance;
     private static LocalTime dayStart = LocalTime.of(5,00);
+    private static LocalTime nightStart = LocalTime.of(18,00);
 
     private ObservableMap<LocalDate, Sleep> sleepRecords;
     private ObservableList<Workout> workoutRecords;
@@ -57,10 +59,19 @@ public class TaskTwig implements Serializable {
         TaskTwig.dayStart = dayStart;
     }
 
+    public static LocalTime getNightStart() {
+        return TaskTwig.nightStart;
+    }
+
+    public static void setNightStart(LocalTime nightStart) {
+        TaskTwig.nightStart = nightStart;
+    }
+    
+    
     public static LocalDate effectiveDate(LocalDateTime date) {
         if (date.toLocalTime().isBefore(dayStart))
             return date.toLocalDate().minusDays(1);
-
+        
         else
             return date.toLocalDate();
     }
@@ -70,6 +81,19 @@ public class TaskTwig implements Serializable {
             return LocalDate.now().minusDays(1);
         else
             return LocalDate.now();
+    }
+
+    public static float hoursFromNightStart(LocalTime time) {
+        if (time.isBefore(dayStart)) {
+            return (dayStart.until(LocalTime.MAX, ChronoUnit.SECONDS) + time.toSecondOfDay()) / 3600f;
+        }
+        else {
+            return dayStart.until(time, ChronoUnit.SECONDS) / 3600f;
+        }
+    }
+
+    public static float hoursFromNightStart() {
+        return TaskTwig.hoursFromNightStart(LocalTime.now());
     }
 
     public void startSleep() {

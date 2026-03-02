@@ -5,6 +5,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.MapChangeListener;
 import javafx.event.ActionEvent;
+import javafx.event.EventType;
 import javafx.fxml.FXML;
 import javafx.scene.Node;
 import javafx.scene.chart.AreaChart;
@@ -407,7 +408,6 @@ public class TaskTwigController {
 
         taskTableView.setItems(twig.taskList());
 
-//        listTree.setCellFactory(treeView -> );
         listTree.setRoot(new TreeItem<>());
         listTree.setShowRoot(false);
         listTree.getRoot().setExpanded(true);
@@ -419,6 +419,9 @@ public class TaskTwigController {
                     setContextMenu(null);
                     setText(null);
                     setGraphic(null);
+                    setOnMouseEntered(event -> {});
+                    setOnMouseExited(event -> {});
+                    setOnMouseClicked(event -> {});
                 }
                 else {
                     ContextMenu contextMenu = new ContextMenu();
@@ -428,6 +431,14 @@ public class TaskTwigController {
                             setText(list.getName());
                             setGraphic(null);
                             getTreeItem().expandedProperty().bindBidirectional(list.expanded());
+
+                            setOnMouseEntered(event -> setStyle("-fx-underline:true"));
+                            setOnMouseExited(event -> setStyle("-fx-underline:false"));
+                            setOnMouseClicked(event -> {
+                                if (event.getButton() == MouseButton.PRIMARY) {
+                                    getTreeItem().setExpanded(!getTreeItem().isExpanded());
+                                }
+                            });
 
                             MenuItem deleteItem = new MenuItem("Delete");
                             MenuItem addItem = new MenuItem("Add");
@@ -446,7 +457,6 @@ public class TaskTwigController {
                                     getTreeItem().getChildren().add(new TreeItem<>(newItem));
                                 });
                             });
-
                             contextMenu.getItems().addAll(deleteItem, addItem);
                         }
                         case TwigList.TwigListItem listItem -> {
@@ -457,6 +467,15 @@ public class TaskTwigController {
                             checkBox.selectedProperty().bindBidirectional(listItem.done());
                             label.disableProperty().bind(checkBox.selectedProperty());
 
+                            setOnMouseEntered(event -> label.setUnderline(true));
+                            setOnMouseExited(event -> label.setUnderline(false));
+
+                            setOnMouseClicked(event -> {
+                                if (event.getButton() == MouseButton.PRIMARY) {
+                                    checkBox.setSelected(!checkBox.isSelected());
+                                    event.consume();
+                                }
+                            });
                             setText(null);
                             setGraphic(new HBox(checkBox, label));
 
@@ -492,6 +511,7 @@ public class TaskTwigController {
             });
         });
         listTree.setContextMenu(new ContextMenu(addItem));
+        listTree.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> event.consume());
         populateTwigLists();
 
 
@@ -771,13 +791,29 @@ public class TaskTwigController {
     private void setSleepStatusLabel(LocalDateTime time) {
         if (time != null) {
             sleepButton.setText("Finish");
-            todaySleepButton.setText("Wake Up");
             sleepStatusLabel.setText("Status: sleeping, started "+ time.format(timeFormat));
+            
+            if (TaskTwig.hoursFromNightStart() < 0) {
+                todaySleepButton.setText("Wake Up");
+                todaySleepButton.setDisable(false);
+            }
+            else {
+                todaySleepButton.setText("Sleeping");
+                todaySleepButton.setDisable(true);
+            }
         }
         else {
             sleepButton.setText("Start");
-            todaySleepButton.setText("Go To Bed");
             sleepStatusLabel.setText("Status: not sleeping");
+
+            if (TaskTwig.hoursFromNightStart() < 0) {
+                todaySleepButton.setText("Awake");
+                todaySleepButton.setDisable(true);
+            }
+            else {
+                todaySleepButton.setText("Go To Bed");
+                todaySleepButton.setDisable(false);
+            }
         }
     }
 
