@@ -3,6 +3,7 @@ package ninjamica.tasktwig.ui;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 import java.io.IOException;
@@ -14,6 +15,12 @@ public class TaskTwigApplication extends Application {
 
         FXMLLoader fxmlLoader = new FXMLLoader(TaskTwigApplication.class.getResource("fxml/main-view.fxml"));
         Scene scene = new Scene(fxmlLoader.load());
+
+        stage.getIcons().addAll(
+          new Image(TaskTwigApplication.class.getResourceAsStream("icon-64.png")),
+          new Image(TaskTwigApplication.class.getResourceAsStream("icon-32.png")),
+          new Image(TaskTwigApplication.class.getResourceAsStream("icon-16.png"))
+        );
         stage.setTitle("TaskTwig");
         stage.setScene(scene);
         stage.show();
