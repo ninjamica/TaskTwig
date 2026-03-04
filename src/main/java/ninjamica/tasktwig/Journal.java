@@ -1,8 +1,5 @@
 package ninjamica.tasktwig;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
@@ -12,6 +9,9 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import tools.jackson.databind.JsonNode;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @JsonIncludeProperties({"text", "routines", "tasks"})
 public record Journal(StringProperty text,

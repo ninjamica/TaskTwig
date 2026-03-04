@@ -1,6 +1,9 @@
 package ninjamica.tasktwig.ui;
 
-import javafx.beans.property.*;
+import javafx.beans.property.Property;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleListProperty;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -16,7 +19,9 @@ import ninjamica.tasktwig.Exercise;
 import ninjamica.tasktwig.TaskTwig;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 public class WorkoutDialog extends Dialog<Map<Exercise, Integer>> {
 
