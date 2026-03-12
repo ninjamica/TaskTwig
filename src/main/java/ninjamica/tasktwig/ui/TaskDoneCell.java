@@ -13,10 +13,10 @@ public class TaskDoneCell extends TableCell<Task, Boolean> {
 
     public TaskDoneCell() {
         if (todoIcon == null)
-            todoIcon = new Image(getClass().getResource("todo-16.png").toExternalForm());
+            todoIcon = new Image(getClass().getResource("images/todo-16.png").toExternalForm());
 
         if (doneIcon == null)
-            doneIcon = new Image(getClass().getResource("done-16.png").toExternalForm());
+            doneIcon = new Image(getClass().getResource("images/done-16.png").toExternalForm());
 
         this.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
             if (event.getButton() == MouseButton.PRIMARY && !this.isEmpty()) {

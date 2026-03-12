@@ -1,15 +1,13 @@
 package ninjamica.tasktwig;
 
-import com.dropbox.core.DbxException;
-import com.dropbox.core.DbxRequestConfig;
+import com.dropbox.core.*;
+import com.dropbox.core.json.JsonReader;
+import com.dropbox.core.oauth.DbxCredential;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
 import com.dropbox.core.v2.files.WriteMode;
-import com.dropbox.core.v2.users.FullAccount;
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.ReadOnlyObjectProperty;
-import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
@@ -44,6 +42,9 @@ public class TaskTwig implements Serializable {
     }
     public record TwigJsonNode(JsonNode node, int version) {}
 
+    public static final String DBX_API_KEY = "ul8ujplgavm586q";
+    public static final File dbxCredFile = new File("data/dbx/credential.app");
+
     private static TaskTwig instance;
     private static LocalTime dayStart = LocalTime.of(5,00);
     private static LocalTime nightStart = LocalTime.of(18,00);
@@ -59,16 +60,29 @@ public class TaskTwig implements Serializable {
     private final ObjectProperty<LocalDateTime> workoutStart = new SimpleObjectProperty<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private DbxCredential dbxCredential;
+    private final ObjectProperty<DbxClientV2> dbxClient = new SimpleObjectProperty<>();
+    private final StringProperty dbxName = new SimpleStringProperty("No active account");
+
 
     public TaskTwig() {
+        dbxClient.addListener((ob, o, n) -> {
+            try {
+                if (n == null) {
+                    dbxName.set("No active account");
+                }
+                else {
+                    dbxName.set(n.users().getCurrentAccount().getName().getDisplayName());
+                }
+            } catch (DbxException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         this.readFromFile();
         TaskTwig.instance = this;
 
-        try {
-            initDbxClient();
-        } catch (DbxException e) {
-            throw new RuntimeException(e);
-        }
+        authDbxFromFile();
     }
 
     static TaskTwig instance() {
@@ -211,6 +225,14 @@ public class TaskTwig implements Serializable {
 
     public ObservableMap<LocalDate, Journal> journalMap() {
         return journalMap;
+    }
+
+    public ReadOnlyObjectProperty<DbxClientV2> dbxClient() {
+        return dbxClient;
+    }
+
+    public ReadOnlyStringProperty dbxName() {
+        return dbxName;
     }
 
     public Journal todaysJournal() {
@@ -485,20 +507,88 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private DbxClientV2 initDbxClient() throws DbxException {
-        String ACCESS_TOKEN = "";
+    public record AuthRequestState(DbxPKCEWebAuth pkceAuth, DbxWebAuth.Request request, String url) {}
+    public AuthRequestState genDbxAuthRequest() {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
-        DbxClientV2 client = new DbxClientV2(config, ACCESS_TOKEN);
 
-        FullAccount account = client.users().getCurrentAccount();
-        System.out.println(account.getName().getDisplayName());
+        DbxAppInfo appInfo = new DbxAppInfo(DBX_API_KEY);
+        DbxPKCEWebAuth pkceWebAuth = new DbxPKCEWebAuth(config, appInfo);
+        DbxWebAuth.Request webAuthRequest = DbxWebAuth.newRequestBuilder()
+                .withNoRedirect()
+                .withTokenAccessType(TokenAccessType.OFFLINE)
+                .build();
 
+        String authorizeUrl = pkceWebAuth.authorize(webAuthRequest);
 
+        return new AuthRequestState(pkceWebAuth, webAuthRequest, authorizeUrl);
+    }
 
-//        uploadDbxFiles(client);
-        downloadDbxFiles(client);
+    public void authDbxFromCode(AuthRequestState webAuth, String code) throws DbxException{
+        DbxAuthFinish authFinish = webAuth.pkceAuth().finishFromCode(code);
+        System.out.println("authFinish scopes: " + authFinish.getScope());
 
-        return client;
+        dbxCredential = new DbxCredential(authFinish.getAccessToken(), authFinish.getExpiresAt(), authFinish.getRefreshToken(), DBX_API_KEY);
+        initDbxClient(dbxCredential);
+
+        try {
+            DbxCredential.Writer.writeToFile(dbxCredential, dbxCredFile);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public boolean authDbxFromFile() {
+        DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
+
+        if (dbxCredFile.exists()) {
+            try {
+                dbxCredential = DbxCredential.Reader.readFromFile(dbxCredFile);
+                if (dbxCredential.aboutToExpire()) {
+                    dbxCredential.refresh(config);
+                }
+
+                initDbxClient(dbxCredential);
+                return true;
+            }
+            catch (JsonReader.FileLoadException e) {
+                System.out.println("Error reading credential file: " + e.getMessage());
+                System.out.println("Reauthorizing user");
+            }
+            catch (DbxException e) {
+                System.out.println("Error refreshing credential: " + e.getMessage());
+                System.out.println("Reauthorizing user");
+            }
+        }
+
+        return false;
+    }
+
+    public void dbxLogout() {
+        dbxCredFile.delete();
+        dbxCredential = null;
+        dbxClient.set(null);
+    }
+
+    private void authDbxUser() throws IOException {
+
+        if (authDbxFromFile()) {
+            return;
+        }
+
+        var authState = genDbxAuthRequest();
+        System.out.println(authState.url());
+        String code = new BufferedReader(new InputStreamReader(System.in)).readLine();
+
+        try {
+            authDbxFromCode(authState, code);
+        } catch (DbxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void initDbxClient(DbxCredential credential) {
+        DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
+        dbxClient.set(new DbxClientV2(config, credential));
     }
 
     private void downloadDbxFiles(DbxClientV2 client) throws DbxException {

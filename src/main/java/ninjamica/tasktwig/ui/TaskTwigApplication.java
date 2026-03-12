@@ -17,9 +17,9 @@ public class TaskTwigApplication extends Application {
         Scene scene = new Scene(fxmlLoader.load());
 
         stage.getIcons().addAll(
-          new Image(TaskTwigApplication.class.getResourceAsStream("icon-64.png")),
-          new Image(TaskTwigApplication.class.getResourceAsStream("icon-32.png")),
-          new Image(TaskTwigApplication.class.getResourceAsStream("icon-16.png"))
+          new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-64.png")),
+          new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-32.png")),
+          new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-16.png"))
         );
         stage.setTitle("TaskTwig");
         stage.setScene(scene);
@@ -27,6 +27,7 @@ public class TaskTwigApplication extends Application {
 
         controller = fxmlLoader.getController();
         controller.setStage(stage);
+        controller.setApplication(this);
     }
 
     @Override

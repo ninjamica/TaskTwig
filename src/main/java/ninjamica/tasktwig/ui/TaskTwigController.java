@@ -1,5 +1,7 @@
 package ninjamica.tasktwig.ui;
 
+import com.dropbox.core.DbxException;
+import javafx.application.Application;
 import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -7,7 +9,9 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.MapChangeListener;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
+import javafx.event.Event;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.chart.AreaChart;
 import javafx.scene.chart.LineChart;
@@ -24,7 +28,10 @@ import javafx.util.Callback;
 import javafx.util.StringConverter;
 import ninjamica.tasktwig.*;
 import ninjamica.tasktwig.TwigList.TwigListItem;
+import ninjamica.tasktwig.ui.PropertySheetItems.ButtonItem;
+import ninjamica.tasktwig.ui.PropertySheetItems.LabelItem;
 import org.controlsfx.control.PopOver;
+import org.controlsfx.control.PropertySheet;
 
 import java.io.IOException;
 import java.time.DayOfWeek;
@@ -86,7 +93,10 @@ public class TaskTwigController {
     @FXML private ListView<String> journalRoutineList;
     @FXML private ListView<String> journalTaskList;
 
+    @FXML private PropertySheet settingsSheet;
+
     private final TaskTwig twig = new TaskTwig();
+    private Application application;
     private Stage stage;
     private final XYChart.Series<String, Float> sleepLenChartData = new XYChart.Series<>();
     private final XYChart.Series<String, Float> sleepStartChartData = new XYChart.Series<>();
@@ -99,6 +109,8 @@ public class TaskTwigController {
     private static final String[] dayOfWeekShorthand = {"M", "T", "W", "Th", "F", "Sa", "Su"};
     private static final LocalTime timeChartRefTime = LocalTime.of(12, 00);
     private static final DataFormat DRAG_DROP_MIME_FORMAT = new DataFormat("application/x-java-serialized-object");
+
+    private final ButtonItem.ButtonItemState dbxButtonState = new ButtonItem.ButtonItemState(new SimpleStringProperty(), new SimpleBooleanProperty(true), this::onDbxButton);
 
     @FXML
     public void initialize() {
@@ -473,7 +485,7 @@ public class TaskTwigController {
             });
         });
         listTree.setContextMenu(new ContextMenu(addItem));
-        listTree.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> event.consume());
+        listTree.addEventFilter(MouseEvent.MOUSE_PRESSED, Event::consume);
         populateTwigLists();
 
 
@@ -628,6 +640,19 @@ public class TaskTwigController {
         journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted((date1, date2) -> date2.compareTo(date1)));
         journalRoutineList.setSelectionModel(null);
         journalTaskList.setSelectionModel(null);
+
+        twig.dbxClient().addListener((observable, oldValue, newValue) -> updateDbxButtonState());
+        updateDbxButtonState();
+
+        settingsSheet.getItems().addAll(
+                new LabelItem(twig.dbxName(), "DropBox Account", "DropBox", ""),
+                new ButtonItem(dbxButtonState, "Connect DropBox Account", "DropBox", "")
+        );
+
+    }
+
+    public void setApplication(Application application) {
+        this.application = application;
     }
 
     public void setStage(Stage stage) {
@@ -942,6 +967,72 @@ public class TaskTwigController {
         routineResult.ifPresent(routine -> {
             twig.routineList().add(routine);
         });
+    }
+
+    private void updateDbxButtonState() {
+        if (twig.dbxClient().getValue() == null) {
+            dbxButtonState.text().set("Connect Account");
+        }
+        else {
+            dbxButtonState.text().set("Logout");
+        }
+    }
+
+    private void dbxAuthorize() {
+        var authState = twig.genDbxAuthRequest();
+
+        Dialog<String> dialog = new Dialog<>() {
+            {
+                setApplication(application);
+                getDialogPane().getStyleClass().add("confirmation");
+                setHeaderText("Open the following URL and paste the provided code below");
+
+                Hyperlink url = new Hyperlink(authState.url());
+                url.setOnAction(event -> application.getHostServices().showDocument(url.getText()));
+                url.setMaxWidth(600);
+                url.setWrapText(true);
+
+                TextField codeInput = new TextField();
+                codeInput.setPromptText("Enter code here");
+
+                VBox contentBox = new VBox(url, codeInput);
+                contentBox.setAlignment(Pos.TOP_CENTER);
+                contentBox.setSpacing(15);
+
+                getDialogPane().setContent(contentBox);
+                getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+                setWidth(600);
+
+                setResultConverter(buttonType -> {
+                    if (buttonType == ButtonType.OK) {
+                        return codeInput.getText();
+                    }
+                    return null;
+                });
+            }
+        };
+
+        dialog.showAndWait().ifPresent(code -> {
+            try {
+                twig.authDbxFromCode(authState, code);
+            } catch (DbxException e) {
+                new Alert(Alert.AlertType.ERROR, "Error Authenticating, code not accepted. Make sure you've entered the code properly.", ButtonType.OK).showAndWait();
+            }
+        });
+    }
+
+    public void onDbxButton(ActionEvent event) {
+        if (twig.dbxClient().getValue() == null) {
+            dbxAuthorize();
+        }
+        else {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION, "Are you sure you want to log out of your Dropbox account?", ButtonType.YES, ButtonType.NO);
+            alert.showAndWait().ifPresent(buttonType -> {
+                if (buttonType == ButtonType.YES) {
+                    twig.dbxLogout();
+                }
+            });
+        }
     }
 
     static class timeTableCell<T> extends TableCell<T, LocalTime> {
