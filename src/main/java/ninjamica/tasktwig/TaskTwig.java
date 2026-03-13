@@ -4,7 +4,6 @@ import com.dropbox.core.*;
 import com.dropbox.core.json.JsonReader;
 import com.dropbox.core.oauth.DbxCredential;
 import com.dropbox.core.v2.DbxClientV2;
-import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.WriteMode;
 import javafx.beans.property.*;
 import javafx.collections.FXCollections;
@@ -45,23 +44,24 @@ public class TaskTwig implements Serializable {
     }
     public record TwigJsonNode(JsonNode node, int version) {}
 
-    private static final File DATA_FOLDER = new File("data");
+    private static final String DBX_API_KEY = "ul8ujplgavm586q";
+    private static final File DATA_DIR = new File("data");
+    private static final File DBX_DIR = new File(DATA_DIR.getPath() + "/dbx");
+    private static final File DBX_CRED_FILE = new File(DBX_DIR.getPath() + "/credential.app");
+    private static final File COMMIT_FILE = new File(DATA_DIR.getPath()+"/commit.json");
     private enum DataFile {
-        SLEEP (new File(DATA_FOLDER.getPath()+"/sleep.json")),
-        WORKOUT (new File(DATA_FOLDER.getPath()+"/workout.json")),
-        TASK (new File(DATA_FOLDER.getPath()+"/task.json")),
-        ROUTINE (new File(DATA_FOLDER.getPath()+"/routine.json")),
-        LIST (new File(DATA_FOLDER.getPath()+"/list.json")),
-        JOURNAL (new File(DATA_FOLDER.getPath()+"/journal.json"));
+        SLEEP (new File(DATA_DIR.getPath()+"/sleep.json")),
+        WORKOUT (new File(DATA_DIR.getPath()+"/workout.json")),
+        TASK (new File(DATA_DIR.getPath()+"/task.json")),
+        ROUTINE (new File(DATA_DIR.getPath()+"/routine.json")),
+        LIST (new File(DATA_DIR.getPath()+"/list.json")),
+        JOURNAL (new File(DATA_DIR.getPath()+"/journal.json"));
 
         public final File file;
         DataFile(File file) {
             this.file = file;
         }
     }
-    private static final File COMMIT_FILE = new File(DATA_FOLDER.getPath()+"/commit.json");
-    private static final String DBX_API_KEY = "ul8ujplgavm586q";
-    private static final File dbxCredFile = new File("data/dbx/credential.app");
 
     private static TaskTwig instance;
     private static LocalTime dayStart = LocalTime.of(5,00);
@@ -98,6 +98,12 @@ public class TaskTwig implements Serializable {
                 throw new RuntimeException(e);
             }
         });
+
+        if (!DATA_DIR.exists())
+            DATA_DIR.mkdirs();
+
+        if (!DBX_DIR.exists())
+            DBX_DIR.mkdirs();
 
         this.readFromFile();
         TaskTwig.instance = this;
@@ -571,7 +577,8 @@ public class TaskTwig implements Serializable {
         currentDbxAuthAttempt = null;
 
         try {
-            DbxCredential.Writer.writeToFile(dbxCredential, dbxCredFile);
+            DBX_CRED_FILE.createNewFile();
+            DbxCredential.Writer.writeToFile(dbxCredential, DBX_CRED_FILE);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -580,9 +587,9 @@ public class TaskTwig implements Serializable {
     public boolean authDbxFromFile() {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
 
-        if (dbxCredFile.exists()) {
+        if (DBX_CRED_FILE.exists()) {
             try {
-                dbxCredential = DbxCredential.Reader.readFromFile(dbxCredFile);
+                dbxCredential = DbxCredential.Reader.readFromFile(DBX_CRED_FILE);
                 if (dbxCredential.aboutToExpire()) {
                     dbxCredential.refresh(config);
                 }
@@ -604,7 +611,7 @@ public class TaskTwig implements Serializable {
     }
 
     public void dbxLogout() {
-        dbxCredFile.delete();
+        DBX_CRED_FILE.delete();
         dbxCredential = null;
         dbxClient.set(null);
     }
@@ -710,32 +717,6 @@ public class TaskTwig implements Serializable {
         }
 
         return new CommitDiff(fileAction, filesToSync);
-    }
-
-    private List<File> compareHashes() {
-        ArrayList<File> outdatedFiles = new ArrayList<>();
-        for (DataFile dataFile : DataFile.values()) {
-            File file = dataFile.file;
-            byte[] localHash, remoteHash;
-            try {
-                localHash = genDbxHash(file);
-            } catch (IOException e) {
-                continue;
-            }
-
-            try {
-                var metadata = dbxClient.get().files().getMetadata("/" + file.getName());
-                remoteHash = HexFormat.of().parseHex(((FileMetadata) metadata).getContentHash());
-
-                if (!Arrays.equals(localHash, remoteHash)) {
-                    outdatedFiles.add(file);
-                }
-            } catch (DbxException e) {
-                outdatedFiles.add(file);
-            }
-        }
-
-        return outdatedFiles;
     }
 
     private byte[] genDbxHash(File file) throws IOException {

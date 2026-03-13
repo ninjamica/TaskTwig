@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 
 @JsonIncludeProperties({"name", "dueAt", "interval", "lastDone"})
 public record Routine(StringProperty name, ObjectProperty<LocalTime> dueTime, ObjectProperty<TwigInterval> interval, ObjectProperty<LocalDate> lastDone) {
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     @JsonCreator
     public Routine(
