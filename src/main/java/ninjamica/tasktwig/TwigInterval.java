@@ -48,6 +48,10 @@ public interface TwigInterval {
      */
     boolean isToday();
 
+    /**
+     * Add contents of interval to a MessageDigest
+     * @param digest MessageDigest to add hashable contents to
+     */
     void hashContents(MessageDigest digest);
 
     static TwigInterval parseFromJson(JsonNode node) {
@@ -410,7 +414,7 @@ public interface TwigInterval {
 
         @Override
         public boolean isToday() {
-            return false;
+            return true;
         }
 
         @Override

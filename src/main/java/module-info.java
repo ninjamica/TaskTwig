@@ -1,15 +1,15 @@
 module ninjamica.tasktwig.tasktwig {
     requires javafx.controls;
     requires javafx.fxml;
-    requires tools.jackson.databind;
+    requires transitive tools.jackson.databind;
     requires org.jetbrains.annotations;
-    requires org.controlsfx.controls;
+    requires transitive org.controlsfx.controls;
     requires atlantafx.base;
 
     requires transitive javafx.base;
     requires transitive javafx.graphics;
     requires java.xml;
-    requires dropbox.core.sdk;
+    requires transitive dropbox.core.sdk;
     requires java.desktop;
 
 

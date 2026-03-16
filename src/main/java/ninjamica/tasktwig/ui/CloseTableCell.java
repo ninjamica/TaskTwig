@@ -17,7 +17,7 @@ public class CloseTableCell<S, T> extends TableCell<S, T> {
     public CloseTableCell() {
 
         if (closeIcon == null) {
-            closeIcon = new Image(getClass().getResource("close-16.png").toExternalForm());
+            closeIcon = new Image(getClass().getResource("images/close-16.png").toExternalForm());
         }
 
         // Mouse click listener, deletes row from table's ObservableList

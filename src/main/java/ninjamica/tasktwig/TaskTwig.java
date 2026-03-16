@@ -450,8 +450,10 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "sleepProgressStart");
             if (parser.nextToken() == JsonToken.VALUE_STRING)
                 this.sleepStart.setValue(LocalDateTime.parse(parser.getString()));
-            else
+            else {
+                this.sleepStart.setValue(null);
                 assertEqual(parser.currentToken(), JsonToken.VALUE_NULL);
+            }
 
             assertEqual(parser.nextName(), "sleepRecords");
             parser.nextToken();
@@ -476,8 +478,10 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "workoutProgressStart");
             if (parser.nextToken() == JsonToken.VALUE_STRING)
                 this.workoutStart.setValue(LocalDateTime.parse(parser.getString()));
-            else
+            else {
+                this.workoutStart.setValue(null);
                 assertEqual(parser.currentToken(), JsonToken.VALUE_NULL);
+            }
 
             assertEqual(parser.nextName(), "exercises");
             parser.nextToken();
@@ -535,19 +539,19 @@ public class TaskTwig implements Serializable {
         }
 
         // Parse journals
+        SortedMap<LocalDate, Journal> journals = new TreeMap<>();
         try (JsonParser parser = mapper.createParser(DataFile.JOURNAL.file)) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
 
-            SortedMap<LocalDate, Journal> journalMap = new TreeMap<>();
             assertEqual(parser.nextName(), "journals");
             parser.nextToken();
-            parseJsonMap(journalMap, parser, LocalDate::parse, Journal::new, version);
-            this.journalMap = FXCollections.observableMap(journalMap);
+            parseJsonMap(journals, parser, LocalDate::parse, Journal::new, version);
         } catch (JsonAssertException | JacksonIOException e) {
-            this.journalMap = FXCollections.observableMap(new TreeMap<>());
+            journals.clear();
         }
+        this.journalMap = FXCollections.observableMap(journals);
     }
 
     private void assertEqual(Object actual, Object expected) throws JsonAssertException {
@@ -735,11 +739,11 @@ public class TaskTwig implements Serializable {
 
     public FileAction dbxSync() {
         CommitDiff commitDiff = compareCommitToDbx();
-        System.out.println("commitDiff: " + commitDiff);
         return dbxSync(commitDiff);
     }
-
-    private FileAction dbxSync(CommitDiff commitDiff) {
+    
+    public FileAction dbxSync(CommitDiff commitDiff) {
+        System.out.println("commitDiff: " + commitDiff);
         switch(commitDiff.action) {
             case UPLOAD -> {
                 for (DataFile dataFile : commitDiff.files) {
@@ -771,6 +775,8 @@ public class TaskTwig implements Serializable {
                 } catch (IOException | DbxException e) {
                     System.out.println("Error downloading commit file: " + e.getMessage());
                 }
+
+                readFromFile();
             }
         }
 
@@ -798,10 +804,13 @@ public class TaskTwig implements Serializable {
         return new CommitData(timestamp, commitHash, fileHashes);
     }
 
-    private record CommitDiff(FileAction action, List<DataFile> files) {}
-    private CommitDiff compareCommitToDbx() {
+    public record CommitDiff(FileAction action, List<DataFile> files) {}
+    public CommitDiff compareCommitToDbx() {
+        if (!COMMIT_FILE.exists()) {
+            return new CommitDiff(FileAction.DOWNLOAD, Arrays.asList(DataFile.values()));
+        }
+        
         CommitData localCommit, remoteCommit;
-
         try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
             localCommit = readCommitData(parser);
         }
