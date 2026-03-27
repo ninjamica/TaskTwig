@@ -16,6 +16,7 @@ public class TaskDialog extends Dialog<Task> {
 
     public TaskDialog(Window owner) {
         taskPane = new TaskContent();
+        taskPane.setPrefHeight(290);
 
         DialogPane dialogPane = new DialogPane();
         dialogPane.setContent(taskPane);
@@ -29,6 +30,7 @@ public class TaskDialog extends Dialog<Task> {
         dialogPane.getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         setDialogPane(dialogPane);
         setResultConverter(this::createTask);
+
     }
 
 //    public TaskDialog(Window owner, Task task) {

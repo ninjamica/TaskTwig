@@ -84,7 +84,7 @@ public record TwigList(StringProperty name, ObservableList<TwigListItem> items, 
         return TaskTwig.callWithFXSafety(name::get);
     }
 
-    @JsonGetter
+    @JsonGetter("items")
     public List<TwigListItem> getItemsJson() {
         if (TaskTwig.notFxThread())
             return TaskTwig.callWithFXSafety(() -> new ArrayList<>(items));

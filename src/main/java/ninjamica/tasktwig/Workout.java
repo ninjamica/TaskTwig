@@ -10,17 +10,18 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.SortedMap;
 import java.util.TreeMap;
 
 public record Workout(@JsonGetter("start") LocalDateTime start,
                       @JsonGetter("end") LocalDateTime end,
-                      @JsonGetter("exercises") Map<Exercise, Integer> exercises) {
+                      @JsonGetter("exercises") SortedMap<Exercise, Integer> exercises) {
     public static final int VERSION = 1;
 
     public Workout(
             @JsonProperty("start") LocalDateTime start,
             @JsonProperty("end") LocalDateTime end,
-            @JsonProperty("exercises") Map<Exercise, Integer> exercises) {
+            @JsonProperty("exercises") SortedMap<Exercise, Integer> exercises) {
         this.start = start;
         this.end = end;
         this.exercises = exercises;
@@ -28,7 +29,7 @@ public record Workout(@JsonGetter("start") LocalDateTime start,
 
     public Workout(JsonNode node, int version) {
         LocalDateTime start, end;
-        Map<Exercise, Integer> exercises = new TreeMap<>();
+        SortedMap<Exercise, Integer> exercises = new TreeMap<>();
 
         if (version == 1) {
             start = LocalDateTime.parse(node.get("start").asString());

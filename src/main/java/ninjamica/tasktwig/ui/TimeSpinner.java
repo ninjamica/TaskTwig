@@ -1,6 +1,7 @@
 package ninjamica.tasktwig.ui;
 
 import javafx.event.Event;
+import javafx.geometry.Pos;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.input.KeyCode;
@@ -29,6 +30,7 @@ public class TimeSpinner {
     public TimeSpinner(Spinner<LocalTime> spinner, LocalTime time) {
         this.timeSpinner = spinner;
         spinner.setEditable(true);
+        spinner.getEditor().setAlignment(Pos.CENTER_RIGHT);
 
         SpinnerValueFactory<LocalTime> valueFactory = new SpinnerValueFactory<>() {
             @Override

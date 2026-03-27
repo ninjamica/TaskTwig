@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.*;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -17,6 +19,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -29,118 +32,187 @@ import java.util.List;
         @JsonSubTypes.Type(value = TaskInterval.WeekInterval.class, name = "week"),
         @JsonSubTypes.Type(value = TaskInterval.MonthInterval.class, name = "month")
 })
-public interface TaskInterval {
+@JsonIncludeProperties({"lastDone"})
+public abstract class TaskInterval {
+
+    protected final ObjectProperty<LocalDate> lastDoneProperty = new SimpleObjectProperty<>();
+    protected BooleanBinding doneBinding;
+
+    protected TaskInterval(LocalDate lastDone) {
+        this.lastDoneProperty.set(lastDone);
+    }
+
+    @JsonGetter("lastDone")
+    public final LocalDate getLastDone() {
+        return TaskTwig.callWithFXSafety(lastDoneProperty::get);
+    }
 
     /**
-     * The next due date of this interval, or null if there isn't one
-     * @return next due date or null
+     * An observable value that updates with the interval's current done status
+     * @return represents interval's current done status
      */
-    LocalDate nextDue();
-
-    /**
-     * Whether the current interval is "in-progress", i.e. whether it should appear in the today tab
-     * @return whether interval is in-progress
-     */
-    boolean inProgress();
+    public final ObservableBooleanValue doneProperty() {
+        return doneBinding;
+    }
 
     /**
      * Whether the current interval is completed or not, effects whether it is checked off in the UI
      * @return whether this interval iteration is completed
      */
-    boolean isDone();
+    public final boolean isDone() {
+        return doneBinding.get();
+    }
+
+    public final void hashContents(MessageDigest digest) {
+        hashContentsHelper(digest);
+        LocalDate lastDone = getLastDone();
+        if (lastDone != null) {
+            digest.update(lastDone.toString().getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * The next due date of this interval, or null if there isn't one
+     * @return next due date or null
+     */
+    public abstract LocalDate nextDue();
+
+    /**
+     * Whether the current interval is "in-progress", i.e. whether it should appear in the today tab
+     * @return whether interval is in-progress
+     */
+    public abstract boolean inProgress();
+
+    /**
+     * Whether the current interval is not completed and its due date (if relevant) has already passed, e.g. overdue
+     * @return whether interval is overdue
+     */
+    public abstract boolean isOverdue();
 
     /**
      * Sets the current interval as completed or not based on value of `done`
      * @param done true if the task should be marked as done, false otherwise
      */
-    void setDone(boolean done);
+    public abstract void setDone(boolean done);
 
     /**
      * Add contents of interval to a MessageDigest
      * @param digest MessageDigest to add hashable contents to
      */
-    void hashContents(MessageDigest digest);
+    protected abstract void hashContentsHelper(MessageDigest digest);
 
     static TaskInterval parseFromJson(JsonNode node, int version) {
-        if (version == 4) {
-            switch (node.get("@type").asString()) {
-                case "none" -> {
-                    return new NoInterval(node.get("done").asBoolean());
-                }
-                case "single" -> {
-                    return new SingleDateInterval(LocalDate.parse(node.get("date").asString()), node.get("done").asBoolean());
-                }
-                case "day" -> {
-                    JsonNode lastDoneNode = node.get("lastDone");
-                    LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
-                    return new DayInterval(node.get("interval").asInt(), node.get("fromLastDone").asBoolean(), lastDone, LocalDate.parse(node.get("nextDue").asString()));
-                }
-                case "week" -> {
-                    JsonNode lastDoneNode = node.get("lastDone");
-                    LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
-                    return new WeekInterval((byte) node.get("bitmap").asInt(), lastDone);
-                }
-                case "month" -> {
-                    List<Integer> days = new ArrayList<>();
-
-                    for (JsonNode day : node.get("dates")) {
-                        days.add(day.asInt());
+        switch (version) {
+            case 5, 6 -> {
+                JsonNode lastDoneNode = node.get("lastDone");
+                LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
+                switch (node.get("@type").asString()) {
+                    case "none" -> {
+                        return new NoInterval(lastDone);
                     }
-                    return new MonthInterval(days, LocalDate.parse(node.get("lastDone").asString()));
-                }
-                default -> {
-                    return null;
-                }
-            }
-        }
-        else if (version == 3) {
-            switch (node.get("@type").asString()) {
-                case "daily" -> {
-                    return new DayInterval(1, false);
-                }
-                case "weekly" -> {
-                    byte bitmap = 0;
+                    case "single" -> {
+                        return new SingleDateInterval(LocalDate.parse(node.get("date").asString()), lastDone);
+                    }
+                    case "day" -> {
+                        return new DayInterval(node.get("interval").asInt(), node.get("fromLastDone").asBoolean(), lastDone, LocalDate.parse(node.get("nextDue").asString()));
+                    }
+                    case "week" -> {
+                        return new WeekInterval((byte) node.get("bitmap").asInt(), lastDone);
+                    }
+                    case "month" -> {
+                        List<Integer> days = new ArrayList<>();
 
-                    int i = 0;
-                    for (JsonNode day : node.get("daysOfWeek")) {
-                        if (day.asBoolean()) {
-                            bitmap |= (byte) (1 << i);
+                        for (JsonNode day : node.get("dates")) {
+                            days.add(day.asInt());
                         }
+                        return new MonthInterval(days, lastDone);
                     }
-                    return new WeekInterval(bitmap, null);
-                }
-                case "monthly" -> {
-                    List<Integer> days = new ArrayList<>();
-
-                    for (JsonNode day : node.get("dueDays")) {
-                        days.add(day.asInt());
+                    default -> {
+                        return null;
                     }
-                    return new MonthInterval(days);
-                }
-                case "singleDay" -> {
-                    return new SingleDateInterval(LocalDate.parse(node.get("date").asString()));
-                }
-                case "none" -> {
-                    return new NoInterval(false);
-                }
-                default -> {
-                    return null;
                 }
             }
-        }
+            case 4 -> {
+                switch (node.get("@type").asString()) {
+                    case "none" -> {
+                        return new NoInterval(node.get("done").asBoolean() ? TaskTwig.today() : null);
+                    }
+                    case "single" -> {
+                        return new SingleDateInterval(LocalDate.parse(node.get("date").asString()), node.get("done").asBoolean() ? TaskTwig.today() : null);
+                    }
+                    case "day" -> {
+                        JsonNode lastDoneNode = node.get("lastDone");
+                        LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
+                        return new DayInterval(node.get("interval").asInt(), node.get("fromLastDone").asBoolean(), lastDone, LocalDate.parse(node.get("nextDue").asString()));
+                    }
+                    case "week" -> {
+                        JsonNode lastDoneNode = node.get("lastDone");
+                        LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
+                        return new WeekInterval((byte) node.get("bitmap").asInt(), lastDone);
+                    }
+                    case "month" -> {
+                        List<Integer> days = new ArrayList<>();
 
-        throw new TaskTwig.JsonVersionException("Unsupported TaskInterval version: " + version);
+                        for (JsonNode day : node.get("dates")) {
+                            days.add(day.asInt());
+                        }
+                        return new MonthInterval(days, LocalDate.parse(node.get("lastDone").asString()));
+                    }
+                    default -> {
+                        return null;
+                    }
+                }
+            }
+            case 3 -> {
+                switch (node.get("@type").asString()) {
+                    case "daily" -> {
+                        return new DayInterval(1, false);
+                    }
+                    case "weekly" -> {
+                        byte bitmap = 0;
+
+                        int i = 0;
+                        for (JsonNode day : node.get("daysOfWeek")) {
+                            if (day.asBoolean()) {
+                                bitmap |= (byte) (1 << i);
+                            }
+                        }
+                        return new WeekInterval(bitmap, null);
+                    }
+                    case "monthly" -> {
+                        List<Integer> days = new ArrayList<>();
+
+                        for (JsonNode day : node.get("dueDays")) {
+                            days.add(day.asInt());
+                        }
+                        return new MonthInterval(days);
+                    }
+                    case "singleDay" -> {
+                        return new SingleDateInterval(LocalDate.parse(node.get("date").asString()));
+                    }
+                    case "none" -> {
+                        return new NoInterval(null);
+                    }
+                    default -> {
+                        return null;
+                    }
+                }
+            }
+            default -> throw new TaskTwig.JsonVersionException("Unsupported TaskInterval version: " + version);
+        }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
-    @JsonIncludeProperties({"done"})
-    class NoInterval implements TaskInterval {
-        private boolean done = false;
+    @JsonIncludeProperties({"lastDone"})
+    public static class NoInterval extends TaskInterval {
 
-        public NoInterval() {}
+        public NoInterval() {
+            this(null);
+        }
 
-        public NoInterval(boolean done) {
-            this.done = done;
+        public NoInterval(LocalDate lastDone) {
+            super(lastDone);
+            doneBinding = lastDoneProperty.isNotNull();
         }
 
         @Override
@@ -150,71 +222,64 @@ public interface TaskInterval {
 
         @Override
         public boolean inProgress() {
-            return isDone();
+            return !isDone() || TaskTwig.today().equals(lastDoneProperty.get());
         }
 
         @Override
-        public boolean isDone() {
-            return done;
+        public boolean isOverdue() {
+            return false;
         }
 
         @Override
         public void setDone(boolean done) {
-            this.done = done;
+            lastDoneProperty.set(done ? TaskTwig.today() : null);
         }
 
         @Override
-        public void hashContents(MessageDigest digest) {
+        protected void hashContentsHelper(MessageDigest digest) {
             digest.update("none".getBytes(StandardCharsets.UTF_8));
-        }
-
-        @JsonGetter("done")
-        public boolean isDoneJson() {
-            return TaskTwig.callWithFXSafety(this::isDone);
         }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
-    @JsonIncludeProperties({"date", "done"})
-    class SingleDateInterval implements TaskInterval {
+    @JsonIncludeProperties({"date", "lastDone"})
+    public static class SingleDateInterval extends TaskInterval {
         private final ObjectProperty<LocalDate> dueDate = new SimpleObjectProperty<>();
-        private boolean done;
 
         public SingleDateInterval(LocalDate dueDate) {
-            this(dueDate, false);
+            this(dueDate, null);
         }
 
-        public SingleDateInterval(LocalDate dueDate, boolean done) {
+        public SingleDateInterval(LocalDate dueDate, LocalDate lastDone) {
+            super(lastDone);
             this.dueDate.set(dueDate);
-            this.done = done;
+            doneBinding = lastDoneProperty.isNotNull();
         }
 
         @Override
         public LocalDate nextDue() {
-            if (TaskTwig.today().isAfter(dueDate.get()))
-                return null;
-            else
-                return dueDate.get();
+            return dueDate.get();
         }
 
         @Override
         public boolean inProgress() {
-            return !TaskTwig.today().isAfter(dueDate.get());
+            return !isDone() || TaskTwig.today().equals(super.lastDoneProperty.get());
         }
 
         @Override
-        public boolean isDone() {
-            return done;
+        public boolean isOverdue() {
+            return !isDone() && TaskTwig.today().isAfter(dueDate.get());
         }
 
         @Override
         public void setDone(boolean done) {
-            this.done = done;
+            lastDoneProperty.set(done ? TaskTwig.today() : null);
         }
 
         @Override
-        public void hashContents(MessageDigest digest) {
-            digest.update(dueDate.toString().getBytes(StandardCharsets.UTF_8));
+        protected void hashContentsHelper(MessageDigest digest) {
+            digest.update("single".getBytes(StandardCharsets.UTF_8));
+            digest.update(getDueDate().toString().getBytes(StandardCharsets.UTF_8));
         }
 
         public ObjectProperty<LocalDate> dueDateProperty() {
@@ -225,96 +290,93 @@ public interface TaskInterval {
         public LocalDate getDueDate() {
             return TaskTwig.callWithFXSafety(dueDate::get);
         }
-
-        @JsonGetter("done")
-        public boolean isDoneJson() {
-            return TaskTwig.callWithFXSafety(this::isDone);
-        }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"interval", "fromLastDone", "lastDone", "nextDue"})
-    class DayInterval implements TaskInterval {
+    public static class DayInterval extends TaskInterval {
         private final IntegerProperty intervalDays = new SimpleIntegerProperty();
         private final BooleanProperty repeatFromLastDone = new SimpleBooleanProperty();
-        private LocalDate lastDone;
-        private LocalDate nextDue;
+        private final ObjectProperty<LocalDate> nextDue = new SimpleObjectProperty<>();
 
         public DayInterval(int intervalDays, boolean repeatFromLastDone) {
-            this.intervalDays.set(intervalDays);
-            this.repeatFromLastDone.set(repeatFromLastDone);
-            this.nextDue = TaskTwig.today().plusDays(intervalDays);
+            this(intervalDays, repeatFromLastDone, TaskTwig.today().plusDays(intervalDays));
         }
 
         public DayInterval(int intervalDays, boolean repeatFromLastDone, LocalDate firstDue) {
-            this.intervalDays.set(intervalDays);
-            this.repeatFromLastDone.set(repeatFromLastDone);
-            this.nextDue = firstDue;
+            this(intervalDays, repeatFromLastDone, null, firstDue);
         }
 
         public DayInterval(int intervalDays, boolean repeatFromLastDone, LocalDate lastDone, LocalDate nextDue) {
-            this.intervalDays.set(intervalDays);
+            super(lastDone);
+            this.intervalDays.set(Math.max(intervalDays, 1));
             this.repeatFromLastDone.set(repeatFromLastDone);
-            this.lastDone = lastDone;
-            this.nextDue = nextDue;
+            this.nextDue.set(nextDue);
+            generateBinding();
+        }
 
-            if (!repeatFromLastDone) {
-                while (!TaskTwig.today().isAfter(nextDue))
-                    this.nextDue = this.nextDue.plusDays(intervalDays);
+        private void generateBinding() {
+            doneBinding = new BooleanBinding() {
+                {
+                    bind(lastDoneProperty, intervalDays, nextDue, repeatFromLastDone, TaskTwig.todayValue());
+                }
+                @Override
+                protected boolean computeValue() {
+                    updateDueDate();
+                    LocalDate lastDone = lastDoneProperty.get();
+                    return lastDone != null &&
+                            (lastDone.until(nextDue.get(), ChronoUnit.DAYS) < intervalDays.get()
+                             || lastDone.equals(TaskTwig.today()));
+                }
+            };
+        }
+
+        private void updateDueDate() {
+            if (!repeatFromLastDone.get()) {
+                while (!TaskTwig.today().isBefore(nextDue.get()))
+                    nextDue.set(nextDue.get().plusDays(intervalDays.get()));
             }
         }
 
         @Override
         public LocalDate nextDue() {
-            return nextDue;
+            return nextDue.get();
         }
 
         @Override
         public boolean inProgress() {
-            return true;
+            return !TaskTwig.today().isBefore(nextDue.get().minusDays(intervalDays.get()));
         }
 
         @Override
-        public boolean isDone() {
-
-            if (!repeatFromLastDone.get()) {
-                while (!TaskTwig.today().isAfter(nextDue))
-                    nextDue = nextDue.plusDays(intervalDays.get());
-            }
-
-            if (lastDone == null)
-                return false;
-
-            return lastDone.until(nextDue, ChronoUnit.DAYS) <= intervalDays.get();
+        public boolean isOverdue() {
+            return false;
         }
 
         @Override
         public void setDone(boolean done) {
             if (done) {
-                lastDone = TaskTwig.today();
+                lastDoneProperty.set(TaskTwig.today());
 
                 if (repeatFromLastDone.get()) {
-                    nextDue = lastDone.plusDays(intervalDays.get());
-                }
-                else {
-                    while (!TaskTwig.today().isAfter(nextDue))
-                        nextDue = nextDue.plusDays(intervalDays.get());
+                    nextDue.set(lastDoneProperty.get().plusDays(intervalDays.get()));
                 }
             }
             else {
-                lastDone = null;
+                lastDoneProperty.set(null);
             }
         }
 
         @Override
-        public void hashContents(MessageDigest digest) {
-            digest.update(ByteBuffer.allocate(4).putInt(intervalDays.get()));
-            digest.update((byte) (repeatFromLastDone.get() ? 1 : 0));
+        protected void hashContentsHelper(MessageDigest digest) {
+            digest.update("days".getBytes(StandardCharsets.UTF_8));
+            digest.update(ByteBuffer.allocate(4).putInt(getInterval()));
+            digest.update((byte) (isRepeatFromLastDone() ? 1 : 0));
+            digest.update(getNextDue().toString().getBytes(StandardCharsets.UTF_8));
+        }
 
-            if (lastDone != null)
-                digest.update(lastDone.toString().getBytes(StandardCharsets.UTF_8));
-
-            digest.update(nextDue.toString().getBytes(StandardCharsets.UTF_8));
+        public ObjectProperty<LocalDate> nextDueProperty() {
+            return nextDue;
         }
 
         @JsonGetter("interval")
@@ -335,36 +397,56 @@ public interface TaskInterval {
             return repeatFromLastDone;
         }
 
-        @JsonGetter("lastDone")
-        public LocalDate getLastDone() {
-            return lastDone;
-        }
-
         @JsonGetter("nextDue")
         public LocalDate getNextDue() {
-            return nextDue;
+            return TaskTwig.callWithFXSafety(nextDue::get);
         }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"bitmap", "lastDone"})
-    class WeekInterval implements TaskInterval {
+    public static class WeekInterval extends TaskInterval {
 
-        private final ObjectProperty<Byte> dayOfWeekMap = new SimpleObjectProperty<>((byte) 0);
-        private LocalDate lastDone;
+        private final ReadOnlyObjectWrapper<Byte> dayOfWeekMap = new ReadOnlyObjectWrapper<>((byte) 0);
 
-        public WeekInterval() {}
+        public WeekInterval() {
+            this(Collections.emptyList());
+        }
 
         public WeekInterval(List<DayOfWeek> days) {
             byte bitmap = 0;
             for (DayOfWeek day : days) {
                 bitmap |= (byte) (1 << day.ordinal());
             }
-            dayOfWeekMap.set(bitmap);
+            this(bitmap, null);
         }
 
         public WeekInterval(byte bitmap, LocalDate lastDone) {
+            super(lastDone);
             dayOfWeekMap.set(bitmap);
+            generateBinding();
+        }
+
+        private void generateBinding() {
+            doneBinding = new BooleanBinding() {
+                {
+                    bind(lastDoneProperty, dayOfWeekMap, TaskTwig.todayValue());
+                }
+
+                @Override
+                protected boolean computeValue() {
+                    LocalDate lastDone = lastDoneProperty.get();
+                    LocalDate lastDue = getLastDue();
+
+                    if (lastDone == null)
+                        return false;
+
+                    if (lastDue == null)
+                        return lastDoneProperty.get() != null;
+
+                    return lastDoneProperty.get().isAfter(lastDue);
+                }
+            };
         }
 
         @Override
@@ -385,46 +467,30 @@ public interface TaskInterval {
 
         @Override
         public boolean inProgress() {
-            return true;
+            return !isDone() || TaskTwig.today().equals(lastDoneProperty.get());
         }
 
         @Override
-        public boolean isDone() {
-            if (lastDone == null)
-                return false;
-
-            return lastDone.isAfter(lastDue());
+        public boolean isOverdue() {
+            return false;
         }
 
         @Override
         public void setDone(boolean done) {
             if (done)
-                lastDone = TaskTwig.today();
+                lastDoneProperty.set(TaskTwig.today());
             else
-                lastDone = null;
+                lastDoneProperty.set(null);
         }
 
         @Override
-        public void hashContents(MessageDigest digest) {
-            digest.update(dayOfWeekMap.get());
-
-            if (lastDone != null)
-                digest.update(lastDone.toString().getBytes(StandardCharsets.UTF_8));
+        protected void hashContentsHelper(MessageDigest digest) {
+            digest.update("week".getBytes(StandardCharsets.UTF_8));
+            digest.update(getDayOfWeekBitmap());
         }
 
         public ReadOnlyObjectProperty<Byte> dayOfWeekMapProperty() {
-            return dayOfWeekMap;
-        }
-
-        public List<DayOfWeek> getDaysOfWeek() {
-            List<DayOfWeek> daysOfWeek = new ArrayList<>();
-
-            for (DayOfWeek day : DayOfWeek.values()) {
-                if (isDueOn(day))
-                    daysOfWeek.add(day);
-            }
-
-            return daysOfWeek;
+            return dayOfWeekMap.getReadOnlyProperty();
         }
 
         public boolean isDueOn(DayOfWeek day) {
@@ -449,11 +515,7 @@ public interface TaskInterval {
             return TaskTwig.callWithFXSafety(dayOfWeekMap::get);
         }
 
-        public LocalDate getLastDone() {
-            return lastDone;
-        }
-
-        private LocalDate lastDue() {
+        private LocalDate getLastDue() {
             LocalDate today = TaskTwig.today();
             int todayIndex = today.getDayOfWeek().ordinal();
 
@@ -471,24 +533,42 @@ public interface TaskInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"dates", "lastDone"})
-    class MonthInterval implements TaskInterval {
+    public static class MonthInterval extends TaskInterval {
         private final ObservableList<Integer> dates = FXCollections.observableArrayList();
-        private LocalDate lastDone;
 
-        public MonthInterval() {}
+        public MonthInterval() {
+            this(Collections.emptyList());
+        }
 
         public MonthInterval(List<Integer> dates) {
             this(dates, null);
         }
 
         public MonthInterval(List<Integer> dates, LocalDate lastDone) {
+            super(lastDone);
             this.dates.setAll(dates);
             this.dates.sort(Comparator.naturalOrder());
-            this.dates.addListener((ListChangeListener<Integer>) c -> {
-                this.dates.sort(Comparator.naturalOrder());
-            });
+            this.dates.addListener((ListChangeListener<Integer>) c ->
+                    this.dates.sort(Comparator.naturalOrder()));
+            generateBinding();
+        }
 
-            this.lastDone = lastDone;
+        private void generateBinding() {
+            doneBinding = new BooleanBinding() {
+                {
+                    bind(lastDoneProperty, dates, TaskTwig.todayValue());
+                }
+
+                @Override
+                protected boolean computeValue() {
+                    LocalDate lastDone = lastDoneProperty.get();
+
+                    if (lastDone == null)
+                        return false;
+
+                    return lastDone.isAfter(getLastDue());
+                }
+            };
         }
 
         @Override
@@ -508,33 +588,28 @@ public interface TaskInterval {
 
         @Override
         public boolean inProgress() {
-            return true;
+            return !isDone() || TaskTwig.today().equals(lastDoneProperty.get());
         }
 
         @Override
-        public boolean isDone() {
-            if (lastDone == null)
-                return false;
-
-            return lastDone.isAfter(lastDue());
+        public boolean isOverdue() {
+            return false;
         }
 
         @Override
         public void setDone(boolean done) {
             if (done)
-                lastDone = TaskTwig.today();
+                lastDoneProperty.set(TaskTwig.today());
             else
-                lastDone = null;
+                lastDoneProperty.set(null);
         }
 
         @Override
-        public void hashContents(MessageDigest digest) {
-            for (int date : this.dates) {
+        protected void hashContentsHelper(MessageDigest digest) {
+            digest.update("month".getBytes(StandardCharsets.UTF_8));
+            for (int date : getDates()) {
                 digest.update((byte) date);
             }
-
-            if (lastDone != null)
-                digest.update(lastDone.toString().getBytes(StandardCharsets.UTF_8));
         }
 
         @JsonGetter("dates")
@@ -546,12 +621,7 @@ public interface TaskInterval {
             return dates;
         }
 
-        @JsonGetter("lastDone")
-        public LocalDate getLastDone() {
-            return lastDone;
-        }
-
-        private LocalDate lastDue() {
+        private LocalDate getLastDue() {
             LocalDate today = TaskTwig.today();
             int todayDate = today.getDayOfMonth();
 

@@ -12,8 +12,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-
-<VBox fx:id="contentVBox" spacing="15.0" stylesheets="@dark-theme.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
+<VBox fx:id="contentVBox" alignment="CENTER" spacing="15.0" stylesheets="@dark-theme.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
    <children>
       <AnchorPane fx:id="namePane">
          <children>
@@ -81,15 +80,17 @@
       </AnchorPane>
       <AnchorPane fx:id="dayIntervalPane">
          <children>
-            <Label layoutY="13.0" text="Day Interval" />
-            <Spinner fx:id="dayIntervalSpinner" editable="true" layoutX="92.0" prefHeight="26.0" prefWidth="149.0" />
-            <Label layoutX="250.0" layoutY="4.0" text="days" />
-            <CheckBox fx:id="dayIntervalRepeatCheckbox" layoutX="92.0" layoutY="37.0" mnemonicParsing="false" text="Repeat from Last Done" />
+            <Label layoutY="5.0" text="Day Interval" />
+            <Spinner fx:id="dayIntervalSpinner" editable="true" layoutX="92.0" prefHeight="26.0" prefWidth="84.0" />
+            <Label layoutX="187.0" layoutY="5.0" text="days" />
+            <CheckBox fx:id="dayIntervalRepeatCheckbox" layoutX="104.0" layoutY="76.0" mnemonicParsing="false" style="-fx-text-fill: lightgray;" text="Repeat from Last Done" textAlignment="RIGHT" wrapText="true" />
+            <DatePicker fx:id="dayIntervalNextDuePicker" layoutX="92.0" layoutY="40.0" />
+            <Label layoutY="43.0" text="Next Due" />
          </children>
       </AnchorPane>
       <AnchorPane fx:id="dueTimePane">
          <children>
-            <Spinner fx:id="dueTimeSpinner" layoutX="92.0" prefHeight="26.0" prefWidth="189.0" />
+            <Spinner fx:id="dueTimeSpinner" layoutX="92.0" prefHeight="26.0" prefWidth="100.0" />
             <Label layoutY="4.0" text="Due Time" />
          </children>
       </AnchorPane>

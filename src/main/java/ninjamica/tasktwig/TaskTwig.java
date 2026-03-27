@@ -6,17 +6,13 @@ import com.dropbox.core.oauth.DbxCredential;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.WriteMode;
 import javafx.application.Platform;
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.ReadOnlyObjectProperty;
-import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.*;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
 import javafx.util.Callback;
-import tools.jackson.core.JsonEncoding;
-import tools.jackson.core.JsonGenerator;
-import tools.jackson.core.JsonParser;
-import tools.jackson.core.JsonToken;
+import tools.jackson.core.*;
 import tools.jackson.core.exc.JacksonIOException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -53,7 +49,7 @@ public class TaskTwig implements Serializable {
     }
 
     private static final String DBX_API_KEY = "ul8ujplgavm586q";
-    private static final int CONFIG_VERSION = 1;
+    private static final int CONFIG_VERSION = 3;
 
     private static final File DATA_DIR = new File("data");
     private static final File DBX_DIR = new File(DATA_DIR.getPath() + "/dbx");
@@ -76,6 +72,7 @@ public class TaskTwig implements Serializable {
 
     private static TaskTwig instance;
     private static boolean notFXThread = false;
+    private static final ReadOnlyObjectWrapper<LocalDate> today = new ReadOnlyObjectWrapper<>(null);
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -88,8 +85,10 @@ public class TaskTwig implements Serializable {
     private ObservableMap<LocalDate, Journal> journalMap;
     private final ObjectProperty<LocalDateTime> sleepStart = new SimpleObjectProperty<>();
     private final ObjectProperty<LocalDateTime> workoutStart = new SimpleObjectProperty<>();
-    private ObjectProperty<LocalTime> dayStart = new SimpleObjectProperty<>(LocalTime.of(5,00));
-    private ObjectProperty<LocalTime> nightStart = new SimpleObjectProperty<>(LocalTime.of(18,00));
+    private final ObjectProperty<LocalTime> dayStart = new SimpleObjectProperty<>(LocalTime.of(5,00));
+    private final ObjectProperty<LocalTime> nightStart = new SimpleObjectProperty<>(LocalTime.of(18,00));
+    private final BooleanProperty autoSync = new SimpleBooleanProperty(true);
+    private final IntegerProperty syncInterval = new SimpleIntegerProperty(15);
 
     private DbxCredential dbxCredential;
     private final ObjectProperty<DbxClientV2> dbxClient = new SimpleObjectProperty<>();
@@ -98,6 +97,8 @@ public class TaskTwig implements Serializable {
 
 
     public TaskTwig() {
+        TaskTwig.instance = this;
+
         if (!DATA_DIR.exists())
             DATA_DIR.mkdirs();
 
@@ -105,48 +106,79 @@ public class TaskTwig implements Serializable {
             DBX_DIR.mkdirs();
 
         readConfigFile();
-        readDataFile();
-        TaskTwig.instance = this;
+        readDataFiles();
 
-        authDbxFromFile();
+        dayStart.subscribe((oldStart, newStart) -> {
+            System.out.println(oldStart + " -> " + newStart);
+            updateToday();
+            if (newStart != oldStart)
+                writeConfigFile();
+        });
+        nightStart.subscribe((oldStart, newStart) -> {
+            System.out.println(oldStart + " -> " + newStart);
+            if (newStart != oldStart)
+                writeConfigFile();
+        });
+        autoSync.subscribe((oldVal, newVal) -> {
+            System.out.println(oldVal + " -> " + newVal);
+            if (newVal != oldVal)
+                writeConfigFile();
+        });
+        syncInterval.subscribe((oldVal, newVal) -> {
+            System.out.println(oldVal + " -> " + newVal);
+            if (!Objects.equals(newVal, oldVal))
+                writeConfigFile();
+        });
     }
 
     static TaskTwig instance() {
         return TaskTwig.instance;
     }
 
-    public ReadOnlyObjectProperty<LocalTime> getDayStart() {
+    public ObservableValue<LocalTime> getDayStart() {
         return dayStart;
     }
 
     public void setDayStart(LocalTime dayStart) {
         this.dayStart.set(dayStart);
-        writeConfigFile();
     }
 
-    public ReadOnlyObjectProperty<LocalTime> getNightStart() {
+    public ObservableValue<LocalTime> getNightStart() {
         return nightStart;
     }
 
     public void setNightStart(LocalTime nightStart) {
         this.nightStart.set(nightStart);
-        writeConfigFile();
     }
 
-    
+
+    public void updateToday() {
+        LocalDate date;
+        if (LocalTime.now().isBefore(dayStart.get()))
+            date = LocalDate.now().minusDays(1);
+        else
+            date = LocalDate.now();
+
+        if (!date.equals(today.get()))
+            today.setValue(date);
+    }
+
+    public static ObservableValue<LocalDate> todayValue() {
+        instance.updateToday();
+        return today.getReadOnlyProperty();
+    }
+
+    public static LocalDate today() {
+        instance.updateToday();
+        return today.getValue();
+    }
+
     public static LocalDate effectiveDate(LocalDateTime date) {
         if (date.toLocalTime().isBefore(instance.dayStart.get()))
             return date.toLocalDate().minusDays(1);
         
         else
             return date.toLocalDate();
-    }
-
-    public static LocalDate today() {
-        if (LocalTime.now().isBefore(instance.dayStart.get()))
-            return LocalDate.now().minusDays(1);
-        else
-            return LocalDate.now();
     }
 
     public static boolean isNight(LocalTime time) {
@@ -170,6 +202,14 @@ public class TaskTwig implements Serializable {
             return CompletableFuture.supplyAsync(supplier, Platform::runLater).join();
         else
             return supplier.get();
+    }
+
+    public BooleanProperty autoSyncProperty() {
+        return autoSync;
+    }
+
+    public IntegerProperty syncIntervalProperty() {
+        return syncInterval;
     }
 
     public void startSleep() {
@@ -209,7 +249,7 @@ public class TaskTwig implements Serializable {
         workoutStart.setValue(startTime);
     }
 
-    public void finishWorkout(Map<Exercise, Integer> exercises, LocalDateTime finishTime) {
+    public void finishWorkout(SortedMap<Exercise, Integer> exercises, LocalDateTime finishTime) {
         workoutRecords.add(new Workout(workoutStart.getValue(), finishTime, exercises));
         workoutStart.setValue(null);
     }
@@ -222,7 +262,7 @@ public class TaskTwig implements Serializable {
         return workoutStart;
     }
 
-    public void finishWorkout(Map<Exercise, Integer> exercises) {
+    public void finishWorkout(SortedMap<Exercise, Integer> exercises) {
         this.finishWorkout(exercises, LocalDateTime.now());
     }
 
@@ -289,18 +329,58 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "version");
             int version = parser.nextIntValue(0);
 
-            if (version == 1) {
-                assertEqual(parser.nextName(), "dayStart");
-                dayStart.set(LocalTime.parse(parser.nextStringValue()));
+            switch (version) {
+                case 3 -> {
+                    assertEqual(parser.nextName(), "dayStart");
+                    dayStart.set(LocalTime.parse(parser.nextStringValue()));
 
-                assertEqual(parser.nextName(), "nightStart");
-                nightStart.set(LocalTime.parse(parser.nextStringValue()));
+                    assertEqual(parser.nextName(), "nightStart");
+                    nightStart.set(LocalTime.parse(parser.nextStringValue()));
 
-                assertEqual(parser.nextName(), "lastSyncedHash");
-                if (parser.nextValue() == JsonToken.VALUE_STRING)
-                    lastSyncedHash = parser.getValueAsString();
-                else
-                    lastSyncedHash = null;
+                    assertEqual(parser.nextName(), "autoSync");
+                    autoSync.set(parser.nextBooleanValue());
+
+                    assertEqual(parser.nextName(), "syncInterval");
+                    syncInterval.set(parser.nextIntValue(15));
+
+                    assertEqual(parser.nextName(), "lastSyncedHash");
+                    if (parser.nextValue() == JsonToken.VALUE_STRING)
+                        lastSyncedHash = parser.getValueAsString();
+                    else
+                        lastSyncedHash = null;
+                }
+                case 2 -> {
+                    assertEqual(parser.nextName(), "dayStart");
+                    dayStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "nightStart");
+                    nightStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "autoSync");
+                    autoSync.set(parser.nextBooleanValue());
+
+                    assertEqual(parser.nextName(), "lastSyncedHash");
+                    if (parser.nextValue() == JsonToken.VALUE_STRING)
+                        lastSyncedHash = parser.getValueAsString();
+                    else
+                        lastSyncedHash = null;
+                }
+                case 1 -> {
+                    assertEqual(parser.nextName(), "dayStart");
+                    dayStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "nightStart");
+                    nightStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    autoSync.set(true);
+
+                    assertEqual(parser.nextName(), "lastSyncedHash");
+                    if (parser.nextValue() == JsonToken.VALUE_STRING)
+                        lastSyncedHash = parser.getValueAsString();
+                    else
+                        lastSyncedHash = null;
+                }
+                default -> throw new JsonVersionException("Unsupported config file version: " + version);
             }
         }
         catch (JacksonIOException e) {
@@ -309,12 +389,15 @@ public class TaskTwig implements Serializable {
     }
 
     private void writeConfigFile() {
+        System.out.println("Writing config file");
         try (JsonGenerator generator = mapper.createGenerator(CONFIG_FILE, JsonEncoding.UTF8)) {
             generator.writeStartObject();
 
             generator.writeNumberProperty("version", CONFIG_VERSION);
             generator.writePOJOProperty("dayStart", dayStart.get());
             generator.writePOJOProperty("nightStart", nightStart.get());
+            generator.writeBooleanProperty("autoSync", autoSync.get());
+            generator.writeNumberProperty("syncInterval", syncInterval.get());
 
             if (lastSyncedHash != null)
                 generator.writeStringProperty("lastSyncedHash", lastSyncedHash);
@@ -325,7 +408,7 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private void readDataFile() {
+    private void readDataFiles() {
         // Parse sleep records
         SortedMap<LocalDate, Sleep> sleepMap = new TreeMap<>();
         try (JsonParser parser = mapper.createParser(DataFile.SLEEP.file)) {
@@ -442,11 +525,11 @@ public class TaskTwig implements Serializable {
 
     public void saveToFileFX() {
         TaskTwig.notFXThread = true;
-        saveToFiles();
+        saveToDataFiles();
         TaskTwig.notFXThread = false;
     }
 
-    public void saveToFiles() {
+    public void saveToDataFiles() {
         Map<DataFile, byte[]> liveHashes = genLiveDataHashes();
         List<DataFile> saveFiles = findOutOfDateFiles(liveHashes);
         System.out.println("Saving files: " + saveFiles);
@@ -586,9 +669,9 @@ public class TaskTwig implements Serializable {
     }
 
     private List<DataFile> findOutOfDateFiles(Map<DataFile, byte[]> liveHashes) {
-        List<DataFile> files = new ArrayList<>();
 
         try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
+            List<DataFile> files = new ArrayList<>();
             CommitData diskCommit = readCommitData(parser);
 
             for (Map.Entry<DataFile, byte[]> liveHash : liveHashes.entrySet()) {
@@ -598,9 +681,15 @@ public class TaskTwig implements Serializable {
                     files.add(liveHash.getKey());
                 }
             }
-        }
 
-        return files;
+            return files;
+        }
+        catch (JsonAssertException | JacksonException e) {
+            System.out.println("Failed reading parse data: " + e.getMessage());
+            System.out.println("Skipped reading parse data");
+
+            return List.of(DataFile.values());
+        }
     }
 
     private Map<DataFile, byte[]> genLiveDataHashes() {
@@ -619,7 +708,7 @@ public class TaskTwig implements Serializable {
                     if (callWithFXSafety(this::isSleeping))
                         digest.update(callWithFXSafety(sleepStart::get).toString().getBytes(StandardCharsets.UTF_8));
 
-                    Map<LocalDate, Sleep> sleepMap = callWithFXSafety(() -> new TreeMap<>(sleepRecords));
+                    SortedMap<LocalDate, Sleep> sleepMap = callWithFXSafety(() -> new TreeMap<>(sleepRecords));
                     for (Map.Entry<LocalDate, Sleep> sleepEntry : sleepMap.entrySet()) {
                         digest.update(sleepEntry.getKey().toString().getBytes(StandardCharsets.UTF_8));
                         sleepEntry.getValue().hashContents(digest);
@@ -653,7 +742,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case JOURNAL -> {
-                    Map<LocalDate, Journal> journals = callWithFXSafety(() -> new TreeMap<>(journalMap));
+                    SortedMap<LocalDate, Journal> journals = callWithFXSafety(() -> new TreeMap<>(journalMap));
                     for (Map.Entry<LocalDate, Journal> journalEntry : journals.entrySet()) {
                         digest.update(journalEntry.getKey().toString().getBytes(StandardCharsets.UTF_8));
                         journalEntry.getValue().hashContents(digest);
@@ -698,10 +787,6 @@ public class TaskTwig implements Serializable {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
-        if (!COMMIT_FILE.exists()) {
-            dbxSync(new CommitDiff(FileAction.DOWNLOAD, Arrays.asList(DataFile.values())));
-        }
     }
 
     public boolean authDbxFromFile() {
@@ -738,7 +823,7 @@ public class TaskTwig implements Serializable {
 
     private void initDbxClient(DbxCredential credential) {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
-        dbxClient.set(new DbxClientV2(config, credential));
+        Platform.runLater(() -> dbxClient.set(new DbxClientV2(config, credential)));
     }
 
     public FileAction dbxSync(Supplier<FileAction> conflictCallback) {
@@ -760,6 +845,7 @@ public class TaskTwig implements Serializable {
                 }
                 try (InputStream fileStream = new FileInputStream(COMMIT_FILE)) {
                     dbxClient.get().files().uploadBuilder("/" + COMMIT_FILE.getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
+                    lastSyncedHash = commitDiff.localCommitData().commitHash;
                 }
                 catch (IOException | DbxException e) {
                     System.out.println("Error uploading commit file: " + e.getMessage());
@@ -776,11 +862,13 @@ public class TaskTwig implements Serializable {
                 }
                 try (OutputStream fileStream = new FileOutputStream(COMMIT_FILE)) {
                     dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.getName()).download(fileStream);
-                } catch (IOException | DbxException e) {
+                    lastSyncedHash = commitDiff.remoteCommitData().commitHash;
+                }
+                catch (IOException | DbxException e) {
                     System.out.println("Error downloading commit file: " + e.getMessage());
                 }
 
-                readDataFile();
+                readDataFiles();
             }
         }
 
@@ -831,57 +919,53 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    public record CommitDiff(FileAction action, List<DataFile> files) {}
+    public record CommitDiff(FileAction action, List<DataFile> files, CommitData localCommitData, CommitData remoteCommitData) {}
     public CommitDiff compareCommitToDbx(Supplier<FileAction> conflictCallback) {
         List<DataFile> filesToSync = new ArrayList<>();
         CommitData localCommit = readLocalCommitData();
         CommitData remoteCommit = readDbxCommitData();
-
-        if (localCommit == null && remoteCommit == null) {
-            lastSyncedHash = null;
-            return new CommitDiff(FileAction.NONE, filesToSync);
-        }
-        else if (localCommit == null) {
-            lastSyncedHash = remoteCommit.commitHash;
-            return new CommitDiff(FileAction.DOWNLOAD, Arrays.asList(DataFile.values()));
-        }
-        else if (remoteCommit == null) {
-            lastSyncedHash = localCommit.commitHash;
-            return new CommitDiff(FileAction.UPLOAD, Arrays.asList(DataFile.values()));
-        }
-
-        if (localCommit.commitHash().equals(remoteCommit.commitHash())) {
-            lastSyncedHash = localCommit.commitHash;
-            return new CommitDiff(FileAction.NONE, filesToSync);
-        }
-
-
         FileAction fileAction;
-        if (remoteCommit.commitHash.equals(lastSyncedHash)) {
-            fileAction = FileAction.UPLOAD;
-        }
-        else if (localCommit.commitHash.equals(lastSyncedHash)) {
-            fileAction = FileAction.DOWNLOAD;
+
+        if (localCommit == null || remoteCommit == null || localCommit.commitHash().equals(remoteCommit.commitHash())) {
+            if (localCommit == null && remoteCommit != null) {
+                filesToSync.addAll(List.of(DataFile.values()));
+                fileAction = FileAction.DOWNLOAD;
+            }
+            else if (localCommit != null && remoteCommit == null) {
+                filesToSync.addAll(List.of(DataFile.values()));
+                fileAction = FileAction.UPLOAD;
+            }
+            else {
+                fileAction = FileAction.NONE;
+            }
         }
         else {
-            fileAction = CompletableFuture.supplyAsync(conflictCallback, Platform::runLater).join();
-        }
 
-        switch (fileAction) {
-            case DOWNLOAD -> lastSyncedHash = remoteCommit.commitHash;
-            case UPLOAD -> lastSyncedHash = localCommit.commitHash;
-            case NONE -> {
-                return new CommitDiff(FileAction.NONE, filesToSync);
+            if (remoteCommit.commitHash.equals(lastSyncedHash)) {
+                fileAction = FileAction.UPLOAD;
+            } else if (localCommit.commitHash.equals(lastSyncedHash)) {
+                fileAction = FileAction.DOWNLOAD;
+            } else {
+                if (conflictCallback != null) {
+                    fileAction = CompletableFuture.supplyAsync(conflictCallback, Platform::runLater).join();
+                    System.out.println("User chose " + fileAction);
+                } else {
+                    return new CommitDiff(null, filesToSync, localCommit, remoteCommit);
+                }
+            }
+
+            if (fileAction == FileAction.NONE) {
+                return new CommitDiff(FileAction.NONE, filesToSync, localCommit, remoteCommit);
+            }
+
+            for (Map.Entry<DataFile, String> localHash : localCommit.fileHashes().entrySet()) {
+                if (!localHash.getValue().equals(remoteCommit.fileHashes().get(localHash.getKey()))) {
+                    filesToSync.add(localHash.getKey());
+                }
             }
         }
 
-        for (Map.Entry<DataFile, String> localHash : localCommit.fileHashes().entrySet()) {
-            if (!localHash.getValue().equals(remoteCommit.fileHashes().get(localHash.getKey()))) {
-                filesToSync.add(localHash.getKey());
-            }
-        }
-
-        return new CommitDiff(fileAction, filesToSync);
+        return new CommitDiff(fileAction, filesToSync, localCommit, remoteCommit);
     }
 
 }

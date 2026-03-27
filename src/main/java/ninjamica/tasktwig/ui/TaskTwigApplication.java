@@ -28,11 +28,13 @@ public class TaskTwigApplication extends Application {
         controller = fxmlLoader.getController();
         controller.setStage(stage);
         controller.setApplication(this);
+
+        stage.setOnCloseRequest(controller::closeTwig);
     }
 
     @Override
     public void stop() throws Exception {
+//        controller.closeTwig();
         super.stop();
-        controller.closeTwig();
     }
 }

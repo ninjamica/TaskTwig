@@ -4,6 +4,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.VBox;
@@ -18,7 +19,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TaskContent extends AnchorPane {
+public class TaskContent extends VBox {
     @FXML private VBox contentVBox;
     @FXML private AnchorPane namePane;
     @FXML private AnchorPane typePane;
@@ -32,6 +33,7 @@ public class TaskContent extends AnchorPane {
     @FXML private ChoiceBox<String> typeChoiceBox;
     @FXML private DatePicker dueDatePicker;
     @FXML private Spinner<Integer> dayIntervalSpinner;
+    @FXML private DatePicker dayIntervalNextDuePicker;
     @FXML private CheckBox dayIntervalRepeatCheckbox;
     @FXML private ToggleButton dayMButton;
     @FXML private ToggleButton dayTButton;
@@ -59,6 +61,7 @@ public class TaskContent extends AnchorPane {
             loader.setLocation(getClass().getResource("fxml/task-dialog.fxml"));
             loader.setController(this);
             getChildren().add(loader.load());
+            setAlignment(Pos.CENTER);
         }
         catch (IOException e) {
             throw new RuntimeException(e);
@@ -67,7 +70,7 @@ public class TaskContent extends AnchorPane {
 
     @FXML
     protected void initialize() {
-        nameTextField.textProperty().bindBidirectional(task.name());
+        nameTextField.textProperty().bindBidirectional(task.nameProperty());
         typeChoiceBox.setItems(types);
         dayIntervalSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, Integer.MAX_VALUE, 1));
 
@@ -84,7 +87,7 @@ public class TaskContent extends AnchorPane {
         updateType(null, taskType, false);
 
         new TimeSpinner(dueTimeSpinner, task.getDueTime());
-        dueTimeSpinner.valueProperty().subscribe(newValue -> task.dueTime().set(newValue));
+        dueTimeSpinner.valueProperty().subscribe(newValue -> task.dueTimeProperty().set(newValue));
 
         typeChoiceBox.getSelectionModel().selectedItemProperty().subscribe((oldItem, newItem) -> updateType(oldItem, newItem, true));
     }
@@ -100,13 +103,13 @@ public class TaskContent extends AnchorPane {
             switch (newValue) {
                 case "No due date" -> {
                     if (overrideInterval) {
-                        task.interval().set(new NoInterval());
+                        task.intervalProperty().set(new NoInterval());
                     }
                 }
                 case "Single date" -> {
                     contentVBox.getChildren().add(2, dueDatePane);
                     if (overrideInterval) {
-                        task.interval().set(new SingleDateInterval(TaskTwig.today()));
+                        task.intervalProperty().set(new SingleDateInterval(TaskTwig.today()));
                     }
 
                     SingleDateInterval interval = (SingleDateInterval) task.getInterval();
@@ -117,22 +120,28 @@ public class TaskContent extends AnchorPane {
                     contentVBox.getChildren().add(2, dayIntervalPane);
 
                     if (overrideInterval) {
-                        task.interval().set(new DayInterval(1, false));
+                        task.intervalProperty().set(new DayInterval(1, false));
                     }
 
                     DayInterval interval = (DayInterval) task.getInterval();
 
                     dayIntervalSpinner.getValueFactory().setValue(interval.getInterval());
+                    dayIntervalNextDuePicker.setValue(interval.nextDue());
                     dayIntervalRepeatCheckbox.setSelected(interval.isRepeatFromLastDone());
 
                     typeSubs = dayIntervalSpinner.valueProperty().subscribe(value -> interval.intervalProperty().set(value)).and(typeSubs);
                     typeSubs = dayIntervalRepeatCheckbox.selectedProperty().subscribe(value -> interval.repeatFromLastDoneProperty().set(value)).and(typeSubs);
+                    typeSubs = dayIntervalNextDuePicker.valueProperty().subscribe(date -> {
+                        System.out.println("Updating next due to: " + date);
+                        if (date != null)
+                            interval.nextDueProperty().set(date);
+                    }).and(typeSubs);
                 }
                 case "Week Interval" -> {
                     contentVBox.getChildren().add(2, dayOfWeekPane);
 
                     if (overrideInterval) {
-                        task.interval().set(new WeekInterval());
+                        task.intervalProperty().set(new WeekInterval());
                     }
 
                     WeekInterval interval = (WeekInterval) task.getInterval();
@@ -157,7 +166,7 @@ public class TaskContent extends AnchorPane {
                     contentVBox.getChildren().add(2, dateOfMonthPane);
 
                     if (overrideInterval) {
-                        task.interval().set(new MonthInterval());
+                        task.intervalProperty().set(new MonthInterval());
                     }
 
                     MonthInterval interval = (MonthInterval) task.getInterval();

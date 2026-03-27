@@ -121,3 +121,15 @@
     -fx-stroke: lightgray ;
     -fx-stroke-width: 2;
 }
+
+.toggle-switch > .thumb-area {
+    -fx-background-color:
+        linear-gradient(to bottom, derive(-fx-text-box-border, -20%), derive(-fx-text-box-border, -30%)),
+        derive(-fx-base, 18%);
+}
+
+.toggle-switch:selected > .thumb-area {
+    -fx-background-color:
+        linear-gradient(to bottom, derive(-fx-text-box-border, -20%), derive(-fx-text-box-border, -30%)),
+        linear-gradient(to bottom, derive(#0b99c9, 30%), #0b99c9);
+}

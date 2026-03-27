@@ -11,7 +11,6 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-
 <VBox fx:id="contentVBox" maxHeight="192.0" prefHeight="192.0" spacing="15.0" stylesheets="@dark-theme.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
    <children>
       <AnchorPane>
@@ -76,7 +75,7 @@
       </AnchorPane>
       <AnchorPane layoutX="35.0" layoutY="156.0">
          <children>
-            <Spinner fx:id="dueTimeSpinner" layoutX="92.0" prefHeight="26.0" prefWidth="189.0" />
+            <Spinner fx:id="dueTimeSpinner" layoutX="92.0" prefHeight="26.0" prefWidth="100.0" />
             <Label layoutY="4.0" text="Due Time" />
          </children>
       </AnchorPane>
