@@ -6,6 +6,7 @@ import com.dropbox.core.oauth.DbxCredential;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.WriteMode;
 import javafx.application.Platform;
+import javafx.beans.binding.ObjectExpression;
 import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
@@ -163,7 +164,7 @@ public class TaskTwig implements Serializable {
             today.setValue(date);
     }
 
-    public static ObservableValue<LocalDate> todayValue() {
+    public static ObjectExpression<LocalDate> todayValue() {
         instance.updateToday();
         return today.getReadOnlyProperty();
     }

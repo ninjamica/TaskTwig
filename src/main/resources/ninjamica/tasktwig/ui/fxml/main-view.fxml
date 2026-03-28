@@ -34,7 +34,7 @@
 <?import javafx.scene.text.Font?>
 <?import org.controlsfx.control.ToggleSwitch?>
 
-<VBox fx:id="rootPane" stylesheets="@dark-theme.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="ninjamica.tasktwig.ui.TaskTwigController">
+<VBox fx:id="rootPane" stylesheets="@dark-theme.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="ninjamica.tasktwig.ui.TaskTwigController">
    <children>
       <TabPane maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="-Infinity" minWidth="-Infinity" prefHeight="651.0" prefWidth="882.0" rotateGraphic="true" stylesheets="@dark-theme.css" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
         <tabs>
@@ -94,11 +94,6 @@
                               <Insets top="10.0" />
                            </padding>
                         </ListView>
-                        <ListView fx:id="todayTaskListView" editable="true" fixedCellSize="32.0" focusTraversable="false" layoutX="263.0" layoutY="135.0" prefHeight="455.0" prefWidth="215.0" AnchorPane.bottomAnchor="30.0" AnchorPane.leftAnchor="263.0" AnchorPane.topAnchor="135.0">
-                           <padding>
-                              <Insets top="10.0" />
-                           </padding>
-                        </ListView>
                         <VBox alignment="CENTER" layoutX="60.0" layoutY="16.0" prefHeight="75.0" prefWidth="157.0" spacing="6.0" style="-fx-background-color: -fx-control-inner-background; -fx-border-color: black;">
                            <children>
                               <Label text="Sleep:">
@@ -112,6 +107,7 @@
                               <Insets top="-3.0" />
                            </padding>
                         </VBox>
+                        <TreeView fx:id="todayTaskTreeView" layoutX="105.0" layoutY="264.0" prefHeight="200.0" prefWidth="215.0" AnchorPane.bottomAnchor="30.0" AnchorPane.leftAnchor="263.0" AnchorPane.topAnchor="135.0" />
                      </children>
                   </AnchorPane>
               </content>

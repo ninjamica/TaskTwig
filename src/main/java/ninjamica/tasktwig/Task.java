@@ -15,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,7 +109,7 @@ public class Task {
     }
 
     public ObservableValue<Boolean> doneObservable() {
-        return intervalProperty().flatMap(TaskInterval::doneProperty);
+        return intervalProperty().flatMap(TaskInterval::doneObservable);
     }
 
     public boolean isDone() {
@@ -129,6 +130,18 @@ public class Task {
 
     public void toggleDone() {
         setDone(!isDone());
+    }
+
+    public ObservableValue<LocalDate> nextDueObservable() {
+        return intervalProperty().flatMap(TaskInterval::nextDueObservable);
+    }
+
+    public ObservableValue<Boolean> inProgressObservable() {
+        return intervalProperty().flatMap(TaskInterval::inProgressObservable);
+    }
+
+    public boolean inProgress() {
+        return getInterval().inProgress();
     }
 
     public void hashContents(MessageDigest digest) {

@@ -5,14 +5,17 @@ import javafx.animation.Animation;
 import javafx.animation.RotateTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.Observable;
 import javafx.beans.property.SimpleFloatProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.MapChangeListener;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
@@ -26,6 +29,7 @@ import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.input.*;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.HBox;
@@ -39,6 +43,8 @@ import javafx.util.Duration;
 import javafx.util.StringConverter;
 import javafx.util.Subscription;
 import ninjamica.tasktwig.*;
+import ninjamica.tasktwig.TaskTwig.CommitDiff;
+import ninjamica.tasktwig.TaskTwig.FileAction;
 import ninjamica.tasktwig.TwigList.TwigListItem;
 import org.controlsfx.control.PopOver;
 import org.controlsfx.control.ToggleSwitch;
@@ -58,7 +64,7 @@ public class TaskTwigController {
     @FXML private Pane rootPane;
 
     @FXML private ListView<Routine> todayRoutineListView;
-    @FXML private ListView<Task> todayTaskListView;
+    @FXML private TreeView<Task> todayTaskTreeView;
     @FXML private Button todaySleepButton;
     @FXML private Button todayExerciseButton;
     @FXML private TextArea todayJournalTextArea;
@@ -203,7 +209,9 @@ public class TaskTwigController {
             }
         });
 
-        todayTaskListView.setCellFactory(col -> new ListCell<>() {
+        todayTaskTreeView.setCellFactory(treeView -> new TreeCell<>() {
+            private Subscription sub = Subscription.EMPTY;
+
             private final Text name = new Text();
             private final Text dueText = new Text();
             private final HBox pane = new HBox(7);
@@ -233,6 +241,9 @@ public class TaskTwigController {
                 name.textProperty().unbind();
                 checkBox.selectedProperty().unbind();
 
+                sub.unsubscribe();
+                sub = Subscription.EMPTY;
+
                 if (item == null || empty) {
                     setGraphic(null);
                 }
@@ -241,6 +252,11 @@ public class TaskTwigController {
                     checkBox.selectedProperty().bind(item.doneObservable());
                     updateFormatting(item);
                     setGraphic(pane);
+
+                    sub = Subscription.combine(
+                        item.dueTimeProperty().subscribe(() -> updateFormatting(item)),
+                        item.nextDueObservable().subscribe(() -> updateFormatting(item))
+                    );
                 }
             }
 
@@ -270,6 +286,8 @@ public class TaskTwigController {
                 }
             }
         });
+        todayTaskTreeView.setRoot(new TreeItem<Task>(new Task("rootTask", new TaskInterval.NoInterval())));
+        todayTaskTreeView.setShowRoot(false);
 
         sleepDateCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().end().toLocalDate().minusDays(1)));
         sleepStartCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().start().toLocalTime()));
@@ -367,7 +385,7 @@ public class TaskTwigController {
                     Task task = getTableRow().getItem();
                     setDateTimeText(task);
                     sub = task.dueTimeProperty().subscribe(dueTime -> setDateTimeText(task)).and(sub);
-                    sub = task.intervalProperty().subscribe(interval -> setDateTimeText(task)).and(sub);
+                    sub = item.nextDueObservable().subscribe(nextDue -> setDateTimeText(task)).and(sub);
                 }
             }
 
@@ -811,12 +829,11 @@ public class TaskTwigController {
         todayRoutineListView.setItems(twig.routineList().filtered(item -> item.getInterval().isToday()));
         subscriptions = subscriptions.and(() -> todayRoutineListView.setItems(null));
 
-        todayTaskListView.setItems(twig.taskList().filtered(item -> item.getInterval().inProgress()));
-        subscriptions = subscriptions.and(() -> todayTaskListView.setItems(null));
+        var filteredTasks = FXCollections.observableList(twig.taskList(), task -> new Observable[] {task.inProgressObservable()}).filtered(Task::inProgress);
+        populateTaskTree(todayTaskTreeView.getRoot(), filteredTasks);
 
         Runnable updateDayNight = () -> {
             updateTodaySleepPane();
-            todayTaskListView.setItems(twig.taskList().filtered(item -> item.getInterval().inProgress()));
         };
         subscriptions = twig.getDayStart().subscribe(updateDayNight).and(subscriptions);
         subscriptions = twig.getNightStart().subscribe(updateDayNight).and(subscriptions);
@@ -844,7 +861,7 @@ public class TaskTwigController {
 //            }
 //        }));
 
-        populateTaskTreeTable();
+        populateTaskTree(taskTreeTable.getRoot(), twig.taskList());
         populateTwigLists();
 
         routineTable.setItems(twig.routineList());
@@ -903,18 +920,18 @@ public class TaskTwigController {
         backgroundService.syncAndExit();
     }
 
-    private void populateTaskTreeTable() {
-        taskTreeTable.getRoot().getChildren().clear();
-        for (Task task : twig.taskList()) {
-            taskTreeTable.getRoot().getChildren().add(constructTaskTree(task));
+    private void populateTaskTree(TreeItem<Task> root, ObservableList<Task> topLevelTasks) {
+        root.getChildren().clear();
+        for (Task task : topLevelTasks) {
+            root.getChildren().add(constructTaskTree(task));
         }
 
-        ListChangeListener<Task> listener = change -> handleTaskItemChange(change, taskTreeTable.getRoot());
-        twig.taskList().addListener(listener);
+        ListChangeListener<Task> listener = change -> handleTaskItemChange(change, root);
+        topLevelTasks.addListener(listener);
 
         subscriptions = Subscription.combine(
-                () -> taskTreeTable.getRoot().getChildren().clear(),
-                () -> twig.taskList().removeListener(listener)
+                () -> root.getChildren().clear(),
+                () -> topLevelTasks.removeListener(listener)
         ).and(subscriptions);
     }
 
@@ -1348,6 +1365,19 @@ public class TaskTwigController {
         return TaskTwig.FileAction.NONE;
     }
 
+    private boolean userConfirmSave() {
+        Alert alert = new Alert(AlertType.CONFIRMATION, "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?", ButtonType.YES, ButtonType.NO);
+        alert.setHeaderText("Sync data before exiting?");
+        alert.initOwner(stage);
+
+        Optional<ButtonType> result = alert.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.YES) {
+            return true;
+        }
+
+        return false;
+    }
+
     @FXML
     protected void onSyncButton() {
         System.out.println("Sync button pressed");
@@ -1380,7 +1410,9 @@ public class TaskTwigController {
 
         private final TaskTwigController controller;
         private final TaskTwig twig;
-        private volatile boolean syncOverride = false;
+        private volatile boolean syncOverrideFlag = false;
+        private volatile boolean exitPromptFlag = false;
+        private volatile boolean exitPromptAsked = false;
         private final Glyph loadIcon;
         private final RotateTransition loadIconAnimation;
 
@@ -1397,7 +1429,7 @@ public class TaskTwigController {
         }
 
         public void forceSync() {
-            syncOverride = true;
+            syncOverrideFlag = true;
         }
 
         public void syncNow() {
@@ -1409,13 +1441,15 @@ public class TaskTwigController {
         public void syncAndExit() {
             setOnSucceeded(event -> Platform.exit());
             setOnFailed(event -> Platform.exit());
+            exitPromptFlag = true;
             restart();
         }
 
         @Override
         protected javafx.concurrent.Task<Void> createTask() {
-            final boolean forceSync = syncOverride;
-            syncOverride = false;
+            final boolean exitPrompt = exitPromptFlag;
+            final boolean forceSync = syncOverrideFlag;
+            syncOverrideFlag = false;
 
             System.out.println("Creating task with forceSync: " + forceSync);
 
@@ -1433,9 +1467,33 @@ public class TaskTwigController {
                     if (twig.dbxClient().getValue() != null) {
                         updateMessage("Comparing data with Dropbox");
 
+                        CommitDiff commitDiff;
                         if (syncToDbx) {
-                            var commitDiff = twig.compareCommitToDbx(controller::handleDataConflict);
+                            commitDiff = twig.compareCommitToDbx(controller::handleDataConflict);
+                        }
+                        else if (exitPrompt) {
+                            System.out.println("Checking sync with exitPrompt");
+                            commitDiff = twig.compareCommitToDbx(() -> {
+                                System.out.println("exitPrompt callback");
+                                exitPromptAsked = true;
+                                boolean sync = controller.userConfirmSave();
+                                System.out.println("exitPrompt result: " + sync);
+                                if (sync)
+                                    return controller.handleDataConflict();
+                                else
+                                    return null;
+                            });
 
+                            if (commitDiff.action() != null && commitDiff.action() != FileAction.NONE){
+                                syncToDbx = exitPromptAsked
+                                    || CompletableFuture.supplyAsync(controller::userConfirmSave, Platform::runLater).join();
+                            }
+                        }
+                        else {
+                            commitDiff= twig.compareCommitToDbx(null);
+                        }
+
+                        if (syncToDbx) {
                             String labelText;
                             switch (commitDiff.action()) {
                                 case UPLOAD -> labelText = "Uploading data to Dropbox";
@@ -1463,8 +1521,6 @@ public class TaskTwigController {
                             updateMessage(finishSyncText);
                         }
                         else {
-                            var commitDiff = twig.compareCommitToDbx(null);
-
                             String syncCompareText = switch(commitDiff.action()) {
                                 case TaskTwig.FileAction.NONE -> "In sync as of " + LocalTime.now().format(timeFormat);
                                 case TaskTwig.FileAction.UPLOAD -> "Ahead of remote";
