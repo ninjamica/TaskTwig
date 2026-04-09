@@ -90,6 +90,7 @@ public class TaskTwigController {
     @FXML private MasterDetailPane taskMasterDetailPane;
     @FXML private TreeTableView<Task> taskTreeTable;
     @FXML private TreeTableColumn<Task, Task> taskNameCol;
+    @FXML private TreeTableColumn<Task, Integer> taskPriorityCol;
     @FXML private TreeTableColumn<Task, TaskInterval> taskDateTimeCol;
     @FXML private TreeTableColumn<Task, TaskInterval> taskRepeatCol;
     @FXML private TreeView<Object> listTree;
@@ -271,12 +272,18 @@ public class TaskTwigController {
                 else {
                     name.textProperty().bind(item.nameProperty());
                     checkBox.selectedProperty().bind(item.doneObservable());
+
+                    TreeItem<Task> treeItem = getTreeItem();
+                    treeItem.expandedProperty().bindBidirectional(item.expandedProperty());
+
                     updateFormatting(item);
                     setGraphic(pane);
 
                     sub = Subscription.combine(
                             item.dueTimeProperty().subscribe(() -> updateFormatting(item)),
-                            item.nextDueObservable().subscribe(() -> updateFormatting(item))
+                            item.nextDueObservable().subscribe(() -> updateFormatting(item)),
+                            item.priorityProperty().subscribe(() -> updateFormatting(item)),
+                            () -> treeItem.expandedProperty().unbindBidirectional(item.expandedProperty())
                     );
                 }
             }
@@ -287,7 +294,14 @@ public class TaskTwigController {
                         name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
                         dueText.setText(null);
                     } else {
-                        name.setStyle("-fx-fill: lightgray");
+                        switch (item.getPriority()) {
+                            case 1 -> name.setStyle("-fx-fill: #84a5ed");
+                            case 2 -> name.setStyle("-fx-fill: lightgreen");
+                            case 3 -> name.setStyle("-fx-fill: gold");
+                            case 4 -> name.setStyle("-fx-fill: coral");
+                            default -> name.setStyle("-fx-fill: #b0b0b0");
+                        }
+
                         if (item.getInterval().isOverdue()) {
                             dueText.setStyle("-fx-fill: #ff0000");
                             dueText.textProperty().unbind();
@@ -307,7 +321,7 @@ public class TaskTwigController {
                 }
             }
         });
-        todayTaskTreeView.setRoot(new TreeItem<Task>(new Task("rootTask", new TaskInterval.NoInterval())));
+        todayTaskTreeView.setRoot(new TreeItem<Task>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
     }
 
     private void initSleepPage() {
@@ -367,7 +381,7 @@ public class TaskTwigController {
     private void initTaskPage() {
         TaskContent taskDetailView = new TaskContent();
         taskMasterDetailPane.setDetailNode(taskDetailView);
-        taskNameCol.setCellValueFactory(task -> task.getValue().valueProperty());
+        taskNameCol.setCellValueFactory(cell -> cell.getValue().valueProperty());
         taskNameCol.setCellFactory(col -> new TreeTableCell<>() {
 
             private final DoneCheckBox checkBox = new DoneCheckBox(done -> {
@@ -394,6 +408,7 @@ public class TaskTwigController {
                 }
             }
         });
+        taskPriorityCol.setCellValueFactory(cell -> cell.getValue().getValue().priorityProperty().asObject());
         taskDateTimeCol.setCellFactory(column -> new TreeTableCell<>() {
             private Subscription sub = Subscription.EMPTY;
 
@@ -510,6 +525,7 @@ public class TaskTwigController {
             }
         });
         taskTreeTable.setRowFactory(table -> new TreeTableRow<>() {
+            private Subscription sub = Subscription.EMPTY;
             private final ContextMenu contextMenu;
             {
                 setOnMouseClicked(event -> {
@@ -534,16 +550,20 @@ public class TaskTwigController {
             @Override
             protected void updateItem(Task task, boolean empty) {
                 super.updateItem(task, empty);
+                sub.unsubscribe();
 
                 if (empty || task == null) {
                     setContextMenu(null);
                 }
                 else {
                     setContextMenu(contextMenu);
+                    TreeItem<Task> treeItem = getTreeItem();
+                    treeItem.expandedProperty().bindBidirectional(task.expandedProperty());
+                    sub = () -> treeItem.expandedProperty().unbindBidirectional(task.expandedProperty());
                 }
             }
         });
-        taskTreeTable.setRoot(new TreeItem<>(new Task("placeholder", new TaskInterval.NoInterval())));
+        taskTreeTable.setRoot(new TreeItem<>(new Task("placeholder", new TaskInterval.NoInterval(), 0)));
     }
 
     private void initRoutinePage() {
@@ -1244,13 +1264,13 @@ public class TaskTwigController {
 
     @FXML
     protected void onNewTaskButtonClick(ActionEvent event) {
-        twig.taskList().add(new Task("", new TaskInterval.NoInterval()));
+        twig.taskList().add(new Task("", new TaskInterval.NoInterval(), 0));
         taskTreeTable.getSelectionModel().clearSelection();
         taskTreeTable.getSelectionModel().select(taskTreeTable.getRoot().getChildren().getLast());
     }
 
     private void addSubtask(TreeItem<Task> parent) {
-        Task newTask = new Task("", new TaskInterval.NoInterval());
+        Task newTask = new Task("", new TaskInterval.NoInterval(), 0);
         parent.getValue().getChildren().add(newTask);
         taskTreeTable.getSelectionModel().select(parent.getChildren().getLast());
     }

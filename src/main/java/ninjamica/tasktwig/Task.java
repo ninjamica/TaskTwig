@@ -4,10 +4,7 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -21,42 +18,76 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-@JsonIncludeProperties({"name", "interval", "dueTime", "children"})
-@JsonPropertyOrder({"name", "interval", "dueTime", "children"})
+@JsonIncludeProperties({"name", "interval", "dueTime", "priority", "children", "expanded"})
+@JsonPropertyOrder({"name", "interval", "dueTime", "priority", "children", "expanded"})
 public class Task {
-    public static final int VERSION = 6;
+    public static final int VERSION = 8;
     private final StringProperty name = new SimpleStringProperty();
     private final ObjectProperty<TaskInterval> interval = new SimpleObjectProperty<>();
     private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
+    private final IntegerProperty priority = new SimpleIntegerProperty();
 
     @JsonInclude(value=JsonInclude.Include.NON_EMPTY)
     private final ObservableList<Task> children = FXCollections.observableArrayList();
+    private boolean hasChildren = false;
+    @JsonInclude(value=JsonInclude.Include.NON_DEFAULT)
+    private final BooleanProperty expanded = new SimpleBooleanProperty();
 
-    public Task(String name, TaskInterval interval, LocalTime dueTime, List<Task> children) {
-        this(name, interval, dueTime);
+
+    public Task(String name, TaskInterval interval, LocalTime dueTime, int priority, List<Task> children, boolean expanded) {
+        this(name, interval, dueTime, priority);
         this.children.addAll(children);
+        this.expanded.set(expanded);
     }
 
-    public Task(String name, TaskInterval interval, LocalTime dueTime) {
+    public Task(String name, TaskInterval interval, LocalTime dueTime, int priority) {
         this.name.set(name);
         this.interval.set(interval);
         this.dueTime.set(dueTime);
+        this.priority.set(priority);
+
+        this.children.subscribe(() -> {
+           if (children.isEmpty()) {
+               expanded.set(false);
+               hasChildren = false;
+           }
+           else {
+               if (!hasChildren) {
+                   expanded.set(true);
+               }
+               hasChildren = true;
+           }
+        });
     }
 
-    public Task(String name, TaskInterval interval) {
-        this(name, interval, null);
+    public Task(String name, TaskInterval interval, int priority) {
+        this(name, interval, null, priority);
     }
 
     public Task(JsonNode node, int version) {
+        String name;
+        TaskInterval interval;
+        LocalTime dueTime = null;
+        int priority = 0;
+        List<Task> children = new ArrayList<>();
+        boolean expanded = false;
 
         switch (version) {
-            case 3, 4, 5, 6 -> {
-                name.set(node.get("name").asString());
-                interval.set(TaskInterval.parseFromJson(node.get("interval"), version));
+            case 8:
+                JsonNode expandedNode = node.get("expanded");
+                if (expandedNode != null)
+                    expanded = expandedNode.asBoolean();
+
+            case 7:
+                priority = node.get("priority").asInt();
+
+            case 3, 4, 5, 6:
+                name = node.get("name").asString();
+                interval = TaskInterval.parseFromJson(node.get("interval"), version);
 
                 JsonNode endNode = node.get("dueTime");
                 if (!endNode.isNull())
-                    dueTime.set(LocalTime.parse(endNode.asString()));
+                    dueTime = LocalTime.parse(endNode.asString());
 
                 JsonNode childrenNode = node.get("children");
                 if (childrenNode != null) {
@@ -64,9 +95,13 @@ public class Task {
                         children.add(new Task(child, version));
                     }
                 }
-            }
-            default -> throw new TaskTwig.JsonVersionException("Unsupported Task version: " + version);
+                break;
+
+            default:
+                throw new TaskTwig.JsonVersionException("Unsupported Task version: " + version);
         }
+
+        this(name, interval, dueTime, priority, children, expanded);
     }
 
     public StringProperty nameProperty() {
@@ -96,6 +131,15 @@ public class Task {
         return TaskTwig.callWithFXSafety(dueTime::get);
     }
 
+    public IntegerProperty priorityProperty() {
+        return priority;
+    }
+
+    @JsonGetter("priority")
+    public int getPriority() {
+        return TaskTwig.callWithFXSafety(priority::get);
+    }
+
     public ObservableList<Task> getChildren() {
         return children;
     }
@@ -106,6 +150,15 @@ public class Task {
             return TaskTwig.callWithFXSafety(() -> new ArrayList<>(children));
         else
             return children;
+    }
+
+    public BooleanProperty expandedProperty() {
+        return expanded;
+    }
+
+    @JsonGetter("expanded")
+    public boolean isExpanded() {
+        return TaskTwig.callWithFXSafety(expanded::get);
     }
 
     public ObservableValue<Boolean> doneObservable() {
@@ -152,9 +205,13 @@ public class Task {
         if (dueTime != null)
             digest.update(getDueTime().toString().getBytes(StandardCharsets.UTF_8));
 
+        digest.update((byte) getPriority());
+
         for (Task task : children) {
             task.hashContents(digest);
         }
+
+        digest.update((byte) (isExpanded() ? 1 : 0));
     }
 
 
@@ -163,9 +220,11 @@ public class Task {
         if (obj == this) return true;
         if (obj == null || obj.getClass() != this.getClass()) return false;
         var that = (Task) obj;
-        return Objects.equals(this.name, that.name) &&
-                Objects.equals(this.interval, that.interval) &&
-                Objects.equals(this.dueTime, that.dueTime);
+        return Objects.equals(this.name.get(), that.name.get()) &&
+                Objects.equals(this.interval.get(), that.interval.get()) &&
+                Objects.equals(this.dueTime.get(), that.dueTime.get()) &&
+                Objects.equals(this.priority.get(), that.priority.get()) &&
+                Objects.equals(this.children, that.children);
     }
 
     @Override
@@ -179,6 +238,7 @@ public class Task {
                 "name=" + name + ", " +
                 "interval=" + interval + ", " +
                 "dueTime=" + dueTime + ", " +
+                "priority=" + priority + ", " +
                 "children=" + children + ']';
     }
 

@@ -19,8 +19,11 @@
          <children>
             <TextField fx:id="nameTextField" layoutY="20.0" prefHeight="26.0" prefWidth="189.0" promptText="Task name" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" />
             <Label text="Name:" />
+            <Label layoutY="61.0" text="Priority" />
+            <Spinner fx:id="prioritySpinner" layoutY="81.0" prefHeight="26.0" prefWidth="100.0" />
          </children>
       </AnchorPane>
+      <AnchorPane />
       <AnchorPane fx:id="typePane">
          <children>
             <ChoiceBox fx:id="typeChoiceBox" layoutY="20.0" prefHeight="26.0" prefWidth="189.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" />

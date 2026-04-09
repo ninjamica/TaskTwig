@@ -30,6 +30,7 @@ public class TaskContent extends VBox {
     @FXML private AnchorPane dueTimePane;
 
     @FXML private TextField nameTextField;
+    @FXML private Spinner<Integer> prioritySpinner;
     @FXML private ChoiceBox<String> typeChoiceBox;
     @FXML private DatePicker dueDatePicker;
     @FXML private Spinner<Integer> dayIntervalSpinner;
@@ -71,6 +72,7 @@ public class TaskContent extends VBox {
     @FXML
     protected void initialize() {
         typeChoiceBox.setItems(types);
+        prioritySpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 4));
         dayIntervalSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, Integer.MAX_VALUE, 1));
         new TimeSpinner(dueTimeSpinner, null);
     }
@@ -83,6 +85,9 @@ public class TaskContent extends VBox {
         if (task != null) {
             nameTextField.textProperty().bindBidirectional(task.nameProperty());
             subscription = subscription.and(() -> nameTextField.textProperty().unbindBidirectional(task.nameProperty()));
+
+            prioritySpinner.getValueFactory().setValue(task.getPriority());
+            subscription = prioritySpinner.valueProperty().subscribe(priority -> task.priorityProperty().set(priority)).and(subscription);
 
             String taskType = switch (task.getInterval()) {
                 case NoInterval none -> "No Due Date";

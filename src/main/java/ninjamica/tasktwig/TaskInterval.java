@@ -121,7 +121,7 @@ public abstract class TaskInterval {
 
     static TaskInterval parseFromJson(JsonNode node, int version) {
         switch (version) {
-            case 5, 6 -> {
+            case 5, 6, 7, 8 -> {
                 JsonNode lastDoneNode = node.get("lastDone");
                 LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
                 switch (node.get("@type").asString()) {
