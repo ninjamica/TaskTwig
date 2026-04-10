@@ -32,6 +32,7 @@ import javafx.scene.layout.Background;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.*;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
@@ -47,6 +48,8 @@ import org.controlsfx.control.MasterDetailPane;
 import org.controlsfx.control.ToggleSwitch;
 import org.controlsfx.glyphfont.Glyph;
 
+import java.text.DecimalFormat;
+import java.text.ParseException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -65,6 +68,7 @@ public class TaskTwigController {
     @FXML private Button todaySleepButton;
     @FXML private Button todayExerciseButton;
     @FXML private TextArea todayJournalTextArea;
+    @FXML private Spinner<Float> todayWeightSpinner;
 
     @FXML private VBox sleepVBox;
     @FXML private Button sleepButton;
@@ -106,6 +110,7 @@ public class TaskTwigController {
     @FXML private TextArea journalTextArea;
     @FXML private ListView<String> journalRoutineList;
     @FXML private ListView<String> journalTaskList;
+    @FXML private Spinner<Float> journalWeightSpinner;
 
     @FXML private Spinner<LocalTime> settingsDayStartSpinner;
     @FXML private Spinner<LocalTime> settingsNightStartSpinner;
@@ -294,13 +299,7 @@ public class TaskTwigController {
                         name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
                         dueText.setText(null);
                     } else {
-                        switch (item.getPriority()) {
-                            case 1 -> name.setStyle("-fx-fill: #84a5ed");
-                            case 2 -> name.setStyle("-fx-fill: lightgreen");
-                            case 3 -> name.setStyle("-fx-fill: gold");
-                            case 4 -> name.setStyle("-fx-fill: coral");
-                            default -> name.setStyle("-fx-fill: #b0b0b0");
-                        }
+                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
 
                         if (item.getInterval().isOverdue()) {
                             dueText.setStyle("-fx-fill: #ff0000");
@@ -322,6 +321,7 @@ public class TaskTwigController {
             }
         });
         todayTaskTreeView.setRoot(new TreeItem<Task>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
+        todayWeightSpinner.setValueFactory(new WeightSpinnerValueFactory());
     }
 
     private void initSleepPage() {
@@ -409,6 +409,24 @@ public class TaskTwigController {
             }
         });
         taskPriorityCol.setCellValueFactory(cell -> cell.getValue().getValue().priorityProperty().asObject());
+        taskPriorityCol.setCellFactory(col -> new TreeTableCell<>() {
+            {
+                setAlignment(Pos.CENTER);
+            }
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setBackground(Background.EMPTY);
+                }
+                else {
+                    setText(item.toString());
+                    setBackground(Background.fill(Color.valueOf(Task.getPriorityColor(item))));
+                }
+            }
+        });
         taskDateTimeCol.setCellFactory(column -> new TreeTableCell<>() {
             private Subscription sub = Subscription.EMPTY;
 
@@ -814,6 +832,7 @@ public class TaskTwigController {
     }
 
     private void initJournalPage() {
+        journalWeightSpinner.setValueFactory(new WeightSpinnerValueFactory());
         journalListView.setCellFactory(list -> new ListCell<>() {
             @Override
             protected void updateItem(LocalDate item, boolean empty) {
@@ -830,6 +849,7 @@ public class TaskTwigController {
         journalListView.getSelectionModel().selectedItemProperty().subscribe((oldValue, newValue) -> {
             if (oldValue != null && twig.journalMap().containsKey(oldValue)) {
                 journalTextArea.textProperty().unbindBidirectional(twig.journalMap().get(oldValue).textProperty());
+                journalWeightSpinner.getValueFactory().valueProperty().unbindBidirectional(twig.journalMap().get(oldValue).weight());
                 journalRoutineList.setItems(null);
                 journalTaskList.setItems(null);
             }
@@ -839,6 +859,7 @@ public class TaskTwigController {
 
                 journalRoutineList.setItems(journal.completedRoutines());
                 journalTaskList.setItems(journal.completedTasks());
+                journalWeightSpinner.getValueFactory().valueProperty().bindBidirectional(journal.weight());
                 journalTextArea.textProperty().bindBidirectional(journal.textProperty());
                 journalTextArea.setPromptText("Type journal here...");
             }
@@ -867,6 +888,9 @@ public class TaskTwigController {
         Journal todaysJournal = twig.todaysJournal();
         todayJournalTextArea.textProperty().bindBidirectional(todaysJournal.textProperty());
         subscriptions = subscriptions.and(() -> todayJournalTextArea.textProperty().unbindBidirectional(todaysJournal.textProperty()));
+
+        todayWeightSpinner.getValueFactory().valueProperty().bindBidirectional(todaysJournal.weight());
+        subscriptions = subscriptions.and(() -> todayWeightSpinner.getValueFactory().valueProperty().unbindBidirectional(todaysJournal.weight()));
 
         todayRoutineListView.setItems(twig.routineList().filtered(item -> item.getInterval().isToday()));
         subscriptions = subscriptions.and(() -> todayRoutineListView.setItems(null));
@@ -1176,7 +1200,8 @@ public class TaskTwigController {
                     Alert confirmDialog = createAlert(
                             Alert.AlertType.CONFIRMATION, "Overwrite Sleep Record?",
                             "Overwrite Sleep Record?",
-                            "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?");
+                            "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?",
+                            ButtonType.YES, ButtonType.NO);
 
                     Optional<ButtonType> result = confirmDialog.showAndWait();
                     if (result.isPresent() && result.get() != ButtonType.YES) {
@@ -1192,7 +1217,10 @@ public class TaskTwigController {
     @FXML
     protected void onSleepButtonClick(MouseEvent event) {
         if(twig.isSleeping() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION, "Cancel Sleep Record?", "Do you want to cancel this sleep record?", "");
+            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION,
+                    "Cancel Sleep Record?",
+                    "Do you want to cancel this sleep record?",
+                    "", ButtonType.YES, ButtonType.NO);
 
             Optional<ButtonType> result = confirmDialog.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.YES) {
@@ -1246,7 +1274,10 @@ public class TaskTwigController {
     @FXML
     protected void onWorkoutButtonClick(MouseEvent event) {
         if(twig.isWorkingOut() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION, "Cancel Workout?", "Do you want to cancel this workout?", "");
+            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION,
+                    "Cancel Workout?",
+                    "Do you want to cancel this workout?",
+                    "", ButtonType.YES, ButtonType.NO);
 
             Optional<ButtonType> result = confirmDialog.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.YES) {
@@ -1275,14 +1306,14 @@ public class TaskTwigController {
         taskTreeTable.getSelectionModel().select(parent.getChildren().getLast());
     }
 
-    private Alert createAlert(Alert.AlertType type, String title, String header, String content) {
+    private Alert createAlert(Alert.AlertType type, String title, String header, String content, ButtonType... buttons) {
         Alert alert = new Alert(type);
         alert.initOwner(stage);
         alert.getDialogPane().getStylesheets().add(darkStylesheet);
         alert.setTitle(title);
         alert.setHeaderText(header);
         alert.setContentText(content);
-        alert.getButtonTypes().setAll(ButtonType.YES, ButtonType.NO);
+        alert.getButtonTypes().setAll(buttons);
 
         return alert;
     }
@@ -1323,6 +1354,7 @@ public class TaskTwigController {
         Dialog<String> dialog = new Dialog<>() {
             {
                 setApplication(application);
+                getDialogPane().getStylesheets().add(darkStylesheet);
                 getDialogPane().getStyleClass().add("confirmation");
                 setHeaderText("Open the following URL and paste the provided code below");
 
@@ -1358,7 +1390,11 @@ public class TaskTwigController {
                 onDbxButton();
             }
             catch (DbxException e) {
-                new Alert(Alert.AlertType.ERROR, "Error Authenticating, code not accepted. Make sure you've entered the code properly and try again.", ButtonType.OK).showAndWait();
+                createAlert(Alert.AlertType.ERROR,
+                        "Authentication Error",
+                        "Error Authenticating, code not accepted",
+                        "Make sure you've entered the code properly and try again.",
+                        ButtonType.OK).showAndWait();
             }
             finally {
                 attachTwigData();
@@ -1371,7 +1407,11 @@ public class TaskTwigController {
             dbxAuthorize();
         }
         else {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION, "Are you sure you want to log out of your Dropbox account?", ButtonType.YES, ButtonType.NO);
+            Alert alert = createAlert(Alert.AlertType.CONFIRMATION,
+                    "Confirm logout?",
+                    "Are you sure you want to log out of your Dropbox account?",
+                    "", ButtonType.YES, ButtonType.NO);
+
             alert.showAndWait().ifPresent(buttonType -> {
                 if (buttonType == ButtonType.YES) {
                     twig.dbxLogout();
@@ -1381,14 +1421,14 @@ public class TaskTwigController {
     }
 
     private TaskTwig.FileAction handleDataConflict() {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setHeaderText("Conflicting data between local and remote!");
-        alert.setContentText("Would you like to keep the local data or the remote (Dropbox) data?");
-        alert.initOwner(stage);
-
         ButtonType remoteButton = new ButtonType("Remote", ButtonBar.ButtonData.NO);
         ButtonType localButton = new ButtonType("Local", ButtonBar.ButtonData.YES);
-        alert.getButtonTypes().setAll(localButton, remoteButton, ButtonType.CANCEL);
+
+        Alert alert = createAlert(Alert.AlertType.CONFIRMATION,
+                "Data conflict!",
+                "Conflicting data between local and remote!",
+                "Would you like to keep the local data or the remote (Dropbox) data?",
+                localButton, remoteButton, ButtonType.CANCEL);
 
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent()) {
@@ -1404,9 +1444,11 @@ public class TaskTwigController {
     }
 
     private boolean userConfirmSave() {
-        Alert alert = new Alert(AlertType.CONFIRMATION, "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?", ButtonType.YES, ButtonType.NO);
-        alert.setHeaderText("Sync data before exiting?");
-        alert.initOwner(stage);
+        Alert alert = createAlert(AlertType.CONFIRMATION,
+                "Sync data?",
+                "Sync data before exiting?",
+                "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
+                ButtonType.YES, ButtonType.NO);
 
         Optional<ButtonType> result = alert.showAndWait();
         return result.isPresent() && result.get() == ButtonType.YES;
@@ -1436,6 +1478,65 @@ public class TaskTwigController {
             else {
                 setText(formatter.format(item));
             }
+        }
+    }
+
+    private static class WeightSpinnerValueFactory extends SpinnerValueFactory<Float> {
+
+        public WeightSpinnerValueFactory() {
+            // Modified from SpinnerValueFactory.DoubleSpinnerValueFactory documentation
+            setConverter(new StringConverter<Float>() {
+                private final DecimalFormat df = new DecimalFormat("#.##");
+
+                @Override public String toString(Float value) {
+                    // If the specified value is null, return a zero-length String
+                    if (value == null) {
+                        return "";
+                    }
+
+                    return df.format(value);
+                }
+
+                @Override public Float fromString(String value) {
+                    try {
+                        // If the specified value is null or zero-length, return null
+                        if (value == null) {
+                            return null;
+                        }
+
+                        value = value.trim();
+
+                        if (value.isEmpty()) {
+                            return null;
+                        }
+
+                        // Perform the requested parsing
+                        return df.parse(value).floatValue();
+                    } catch (ParseException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void decrement(int i) {
+            Float value = getValue();
+
+            if (value != null)
+                setValue(Math.max(value - i, 0f));
+            else
+                setValue(0f);
+        }
+
+        @Override
+        public void increment(int i) {
+            Float value = getValue();
+
+            if (value != null)
+                setValue(value + i);
+            else
+                setValue(0f);
         }
     }
 

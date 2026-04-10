@@ -41,41 +41,33 @@
               <content>
                   <GridPane hgap="20.0" vgap="5.0">
                      <columnConstraints>
-                        <ColumnConstraints halignment="CENTER" hgrow="SOMETIMES" percentWidth="30.0" />
-                        <ColumnConstraints halignment="CENTER" hgrow="SOMETIMES" percentWidth="30.0" />
-                        <ColumnConstraints halignment="CENTER" hgrow="SOMETIMES" percentWidth="40.0" />
+                        <ColumnConstraints halignment="CENTER" hgrow="ALWAYS" />
+                        <ColumnConstraints halignment="CENTER" hgrow="ALWAYS" />
+                        <ColumnConstraints fillWidth="false" halignment="CENTER" hgrow="NEVER" />
                      </columnConstraints>
                      <rowConstraints>
-                        <RowConstraints vgrow="NEVER" />
-                        <RowConstraints prefHeight="30.0" vgrow="NEVER" />
-                        <RowConstraints vgrow="NEVER" />
+                        <RowConstraints fillHeight="false" vgrow="NEVER" />
+                        <RowConstraints minHeight="108.0" vgrow="SOMETIMES" />
+                        <RowConstraints fillHeight="false" vgrow="NEVER" />
                         <RowConstraints vgrow="ALWAYS" />
                      </rowConstraints>
                      <children>
-                        <Label text="Routines:" GridPane.rowIndex="2">
-                           <font>
-                              <Font size="16.0" />
-                           </font>
-                           <GridPane.margin>
-                              <Insets top="10.0" />
-                           </GridPane.margin>
-                        </Label>
-                        <ListView fx:id="todayRoutineListView" editable="true" fixedCellSize="32.0" prefHeight="455.0" prefWidth="215.0" GridPane.rowIndex="3">
+                        <ListView fx:id="todayRoutineListView" editable="true" fixedCellSize="32.0" prefHeight="455.0" prefWidth="215.0" GridPane.rowIndex="1" GridPane.rowSpan="3">
                            <padding>
                               <Insets bottom="1.0" left="1.0" right="1.0" top="10.0" />
                            </padding>
                         </ListView>
-                        <TreeView fx:id="todayTaskTreeView" fixedCellSize="32.0" prefHeight="200.0" prefWidth="215.0" showRoot="false" GridPane.columnIndex="1" GridPane.rowIndex="3">
+                        <TreeView fx:id="todayTaskTreeView" fixedCellSize="32.0" prefHeight="200.0" prefWidth="215.0" showRoot="false" GridPane.columnIndex="1" GridPane.rowIndex="1" GridPane.rowSpan="3">
                            <padding>
                               <Insets bottom="1.0" left="1.0" right="1.0" top="10.0" />
                            </padding>
                         </TreeView>
-                        <Label text="Journal" GridPane.columnIndex="2">
+                        <Label text="Journal:" GridPane.columnIndex="2" GridPane.rowIndex="2">
                            <font>
                               <Font size="16.0" />
                            </font>
                         </Label>
-                        <TextArea fx:id="todayJournalTextArea" focusTraversable="false" prefHeight="539.0" prefWidth="349.0" promptText="Type journal here..." style="-fx-border-color: black; -fx-border-width: 0.3;" wrapText="true" GridPane.columnIndex="2" GridPane.rowIndex="1" GridPane.rowSpan="3">
+                        <TextArea fx:id="todayJournalTextArea" focusTraversable="false" minWidth="199.0" prefWidth="250.0" promptText="Type journal here..." style="-fx-border-color: black; -fx-border-width: 0.3;" wrapText="true" GridPane.columnIndex="2" GridPane.hgrow="NEVER" GridPane.rowIndex="3">
                            <opaqueInsets>
                               <Insets />
                            </opaqueInsets>
@@ -87,47 +79,51 @@
                               </InnerShadow>
                            </effect>
                         </TextArea>
-                        <VBox alignment="CENTER" fillWidth="false" GridPane.columnIndex="1" GridPane.rowSpan="2" GridPane.vgrow="NEVER">
+                        <GridPane alignment="CENTER" hgap="3.0" style="-fx-background-color: -fx-control-inner-background; -fx-border-color: black;" vgap="15.0" GridPane.columnIndex="2" GridPane.hgrow="NEVER" GridPane.rowSpan="2">
+                           <columnConstraints>
+                              <ColumnConstraints halignment="RIGHT" hgrow="ALWAYS" minWidth="10.0" />
+                              <ColumnConstraints halignment="LEFT" hgrow="ALWAYS" minWidth="10.0" />
+                              <ColumnConstraints hgrow="NEVER" minWidth="10.0" />
+                           </columnConstraints>
+                           <rowConstraints>
+                              <RowConstraints vgrow="SOMETIMES" />
+                              <RowConstraints vgrow="SOMETIMES" />
+                              <RowConstraints vgrow="SOMETIMES" />
+                           </rowConstraints>
                            <children>
-                              <VBox alignment="CENTER" prefWidth="150.0" spacing="3.0" style="-fx-background-color: -fx-control-inner-background; -fx-border-color: black;">
-                                 <children>
-                                    <Label text="Exercise:">
-                                       <font>
-                                          <Font size="16.0" />
-                                       </font>
-                                    </Label>
-                                    <Button fx:id="todayExerciseButton" alignment="CENTER" mnemonicParsing="false" onAction="#onWorkoutButtonAction" text="Start" textAlignment="CENTER" />
-                                 </children>
-                                 <padding>
-                                    <Insets bottom="5.0" top="2.0" />
-                                 </padding>
-                              </VBox>
+                              <Label text="Weight:" GridPane.rowIndex="2">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <Spinner fx:id="todayWeightSpinner" editable="true" prefHeight="26.0" prefWidth="95.0" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+                              <Label text="lbs" GridPane.columnIndex="2" GridPane.rowIndex="2" />
+                              <Label text="Sleep:">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <Label text="Exercise:" GridPane.rowIndex="1">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <Button fx:id="todaySleepButton" mnemonicParsing="false" onAction="#onSleepButtonAction" text="Go To Sleep" GridPane.columnIndex="1" />
+                              <Button fx:id="todayExerciseButton" alignment="CENTER" mnemonicParsing="false" onAction="#onWorkoutButtonAction" text="Start" textAlignment="CENTER" GridPane.columnIndex="1" GridPane.rowIndex="1" />
                            </children>
-                        </VBox>
-                        <VBox alignment="CENTER" fillWidth="false" GridPane.rowSpan="2" GridPane.vgrow="NEVER">
-                           <children>
-                              <VBox alignment="CENTER" fillWidth="false" prefWidth="150.0" spacing="3.0" style="-fx-background-color: -fx-control-inner-background; -fx-border-color: black;">
-                                 <children>
-                                    <Label text="Sleep:">
-                                       <font>
-                                          <Font size="16.0" />
-                                       </font>
-                                    </Label>
-                                    <Button fx:id="todaySleepButton" mnemonicParsing="false" onAction="#onSleepButtonAction" text="Go To Sleep" />
-                                 </children>
-                                 <padding>
-                                    <Insets bottom="5.0" top="2.0" />
-                                 </padding>
-                              </VBox>
-                           </children>
-                        </VBox>
-                        <Label text="Tasks:" GridPane.columnIndex="1" GridPane.rowIndex="2">
+                           <padding>
+                              <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                           </padding>
+                        </GridPane>
+                        <Label text="Routines:">
                            <font>
                               <Font size="16.0" />
                            </font>
-                           <GridPane.margin>
-                              <Insets top="10.0" />
-                           </GridPane.margin>
+                        </Label>
+                        <Label text="Tasks:" GridPane.columnIndex="1">
+                           <font>
+                              <Font size="16.0" />
+                           </font>
                         </Label>
                      </children>
                      <padding>
@@ -228,17 +224,17 @@
                   <AnchorPane>
                      <children>
                         <Button mnemonicParsing="false" onAction="#onNewTaskButtonClick" text="New Task +" AnchorPane.leftAnchor="20.0" AnchorPane.topAnchor="20.0" />
-                        <Label alignment="CENTER" layoutX="286.0" layoutY="23.0" text="Tasks" textAlignment="CENTER">
+                        <Label alignment="CENTER" layoutX="434.0" layoutY="23.0" text="Tasks" textAlignment="CENTER">
                            <font>
                               <Font name="System Bold" size="15.0" />
                            </font>
                         </Label>
-                        <MasterDetailPane fx:id="taskMasterDetailPane" dividerPosition="0.74" layoutX="17.0" layoutY="65.0" prefHeight="525.0" prefWidth="600.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="65.0">
+                        <MasterDetailPane fx:id="taskMasterDetailPane" dividerPosition="0.74" layoutX="17.0" layoutY="65.0" prefHeight="525.0" prefWidth="600.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="60.0">
                             <masterNode>
                                 <TreeTableView fx:id="taskTreeTable" layoutX="186.0" layoutY="71.0" prefHeight="365.0" prefWidth="574.0" showRoot="false" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="65.0">
                                     <columns>
                                         <TreeTableColumn fx:id="taskNameCol" minWidth="90.0" prefWidth="277.0" text="Name" />
-                                    <TreeTableColumn fx:id="taskPriorityCol" minWidth="54.0" prefWidth="54.0" text="Priority" />
+                                    <TreeTableColumn fx:id="taskPriorityCol" maxWidth="54.0" minWidth="54.0" prefWidth="54.0" style="-fx-text-fill: black;" text="Priority" />
                                         <TreeTableColumn fx:id="taskDateTimeCol" minWidth="108.0" prefWidth="156.0" text="Due Date (Time)" />
                                         <TreeTableColumn fx:id="taskRepeatCol" minWidth="82.0" prefWidth="160.0" text="Repeat" />
                                     </columns>
@@ -256,8 +252,8 @@
               <content>
                 <AnchorPane>
                      <children>
-                        <Button fx:id="routineButton" layoutX="20.0" layoutY="35.0" mnemonicParsing="false" onAction="#createRoutine" text="New Routine +" AnchorPane.leftAnchor="20.0" AnchorPane.topAnchor="35.0" />
-                        <MasterDetailPane fx:id="routineMasterDetailPane" dividerPosition="0.74" layoutX="125.0" layoutY="54.0" prefHeight="261.0" prefWidth="226.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="80.0">
+                        <Button fx:id="routineButton" layoutX="20.0" layoutY="35.0" mnemonicParsing="false" onAction="#createRoutine" text="New Routine +" AnchorPane.leftAnchor="20.0" AnchorPane.topAnchor="20.0" />
+                        <MasterDetailPane fx:id="routineMasterDetailPane" dividerPosition="0.74" layoutX="125.0" layoutY="54.0" prefHeight="261.0" prefWidth="226.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="60.0">
                             <masterNode>
                                 <TableView fx:id="routineTable" layoutX="119.0" layoutY="80.0" prefHeight="428.0" prefWidth="616.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="80.0">
                                     <columns>
@@ -271,6 +267,11 @@
                                 </TableView>
                             </masterNode>
                         </MasterDetailPane>
+                        <Label alignment="CENTER" layoutX="422.0" layoutY="23.0" text="Routines" textAlignment="CENTER">
+                           <font>
+                              <Font name="System Bold" size="15.0" />
+                           </font>
+                        </Label>
                      </children>
                   </AnchorPane>
               </content>
@@ -279,16 +280,12 @@
               <content>
                 <AnchorPane>
                      <children>
-                        <AnchorPane layoutX="254.0" layoutY="26.0" minHeight="0.0" minWidth="0.0" prefHeight="568.0" prefWidth="255.0">
-                           <children>
-                              <TreeView fx:id="listTree" prefHeight="200.0" prefWidth="200.0" showRoot="false" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="50.0" />
-                              <Label alignment="CENTER" layoutX="115.0" layoutY="4.0" text="Lists" textAlignment="CENTER" AnchorPane.topAnchor="15.0">
-                                 <font>
-                                    <Font name="System Bold" size="15.0" />
-                                 </font>
-                              </Label>
-                           </children>
-                        </AnchorPane>
+                        <TreeView fx:id="listTree" layoutX="274.0" layoutY="76.0" prefHeight="200.0" prefWidth="200.0" showRoot="false" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="50.0" />
+                        <Label alignment="CENTER" layoutX="438.0" layoutY="14.0" text="Lists" textAlignment="CENTER" AnchorPane.topAnchor="15.0">
+                           <font>
+                              <Font name="System Bold" size="15.0" />
+                           </font>
+                        </Label>
                      </children>
                   </AnchorPane>
               </content>
@@ -309,6 +306,28 @@
                         <ListView fx:id="journalListView" layoutX="80.0" layoutY="123.0" prefHeight="361.0" prefWidth="200.0" AnchorPane.bottomAnchor="30.0" AnchorPane.leftAnchor="30.0" AnchorPane.topAnchor="30.0" />
                         <VBox alignment="TOP_CENTER" layoutX="466.0" layoutY="38.0" prefHeight="562.0" prefWidth="162.0" spacing="10.0" AnchorPane.bottomAnchor="30.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="30.0">
                            <children>
+                              <GridPane alignment="CENTER" hgap="3.0" minHeight="60.0" style="-fx-background-color: -fx-control-inner-background; -fx-border-color: black;" vgap="3.0">
+                                 <columnConstraints>
+                                    <ColumnConstraints hgrow="ALWAYS" minWidth="10.0" />
+                                    <ColumnConstraints hgrow="NEVER" minWidth="10.0" />
+                                 </columnConstraints>
+                                 <rowConstraints>
+                                    <RowConstraints minHeight="10.0" vgrow="SOMETIMES" />
+                                    <RowConstraints minHeight="10.0" vgrow="SOMETIMES" />
+                                 </rowConstraints>
+                                 <children>
+                                    <Label text="Weight:" GridPane.columnSpan="2" GridPane.halignment="CENTER">
+                                       <font>
+                                          <Font size="16.0" />
+                                       </font>
+                                    </Label>
+                                    <Spinner fx:id="journalWeightSpinner" editable="true" prefHeight="26.0" prefWidth="125.0" GridPane.halignment="RIGHT" GridPane.rowIndex="1" />
+                                    <Label text="lbs" GridPane.columnIndex="1" GridPane.rowIndex="1" />
+                                 </children>
+                                 <padding>
+                                    <Insets bottom="5.0" left="10.0" right="10.0" top="2.0" />
+                                 </padding>
+                              </GridPane>
                             <TitledPane text="Completed Routines" VBox.vgrow="SOMETIMES">
                                  <content>
                                     <AnchorPane style="-fx-padding: 0;">
@@ -373,7 +392,7 @@
                                   </font>
                               </Label>
                               <Label fx:id="settingsDbxName" text="dbx account here" GridPane.columnIndex="1" GridPane.rowIndex="8" />
-                              <Button fx:id="settingsDbxButton" mnemonicParsing="false" onAction="#onDbxButton" prefHeight="26.0" prefWidth="149.0" text="Dbx Connect Button" GridPane.columnIndex="1" GridPane.rowIndex="9" />
+                              <Button fx:id="settingsDbxButton" mnemonicParsing="false" onAction="#onDbxButton" text="Dbx Connect Button" GridPane.columnIndex="1" GridPane.rowIndex="9" />
                               <Separator maxWidth="-Infinity" prefWidth="400.0" GridPane.columnSpan="2147483647" GridPane.halignment="CENTER" GridPane.rowIndex="7" />
                               <Label text="Start of day:" GridPane.rowIndex="3">
                                  <font>
@@ -398,8 +417,8 @@
                                     <Font name="System Bold" size="13.0" />
                                  </font>
                               </Label>
-                              <Spinner fx:id="settingsDayStartSpinner" prefHeight="26.0" prefWidth="135.0" GridPane.columnIndex="1" GridPane.rowIndex="3" />
-                              <Spinner fx:id="settingsNightStartSpinner" prefHeight="26.0" prefWidth="135.0" GridPane.columnIndex="1" GridPane.rowIndex="4" />
+                              <Spinner fx:id="settingsDayStartSpinner" prefWidth="100.0" GridPane.columnIndex="1" GridPane.rowIndex="3" />
+                              <Spinner fx:id="settingsNightStartSpinner" prefWidth="100.0" GridPane.columnIndex="1" GridPane.rowIndex="4" />
                               <ToggleSwitch fx:id="settingsAutoSyncToggle" prefHeight="20.0" prefWidth="37.0" GridPane.columnIndex="1" GridPane.rowIndex="6" />
                               <Label text="Auto save/sync interval:" GridPane.rowIndex="5">
                                   <font>
@@ -408,7 +427,7 @@
                               </Label>
                               <HBox alignment="CENTER_LEFT" spacing="5.0" GridPane.columnIndex="1" GridPane.rowIndex="5">
                                  <children>
-                                    <Spinner fx:id="settingsIntervalSpinner" editable="true" prefHeight="26.0" prefWidth="78.0" />
+                                    <Spinner fx:id="settingsIntervalSpinner" editable="true" prefWidth="78.0" />
                                     <Label text="seconds" />
                                  </children>
                               </HBox>

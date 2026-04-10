@@ -352,7 +352,10 @@ public abstract class TaskInterval {
 
         @Override
         public boolean isOverdue() {
-            return false;
+            if (isRepeatFromLastDone())
+                return TaskTwig.today().isAfter(nextDue.get());
+            else
+                return false;
         }
 
         @Override

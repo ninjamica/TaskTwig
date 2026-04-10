@@ -197,6 +197,16 @@ public class Task {
         return getInterval().inProgress();
     }
 
+    public static String getPriorityColor(int priority) {
+        return switch(priority) {
+            case 1 -> "#84a5ed";
+            case 2 -> "lightgreen";
+            case 3 -> "gold";
+            case 4 -> "coral";
+            default -> "#b0b0b0";
+        };
+    }
+
     public void hashContents(MessageDigest digest) {
         digest.update(getName().getBytes(StandardCharsets.UTF_8));
         getInterval().hashContents(digest);
