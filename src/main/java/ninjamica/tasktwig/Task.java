@@ -1,5 +1,6 @@
 package ninjamica.tasktwig;
 
+import atlantafx.base.theme.Styles;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
@@ -205,6 +206,20 @@ public class Task {
             case 4 -> "coral";
             default -> "#b0b0b0";
         };
+    }
+
+    public static String priorityStyleClass(int priority) {
+        return switch (priority) {
+            case 1 -> Styles.ACCENT;
+            case 2 -> Styles.SUCCESS;
+            case 3 -> Styles.WARNING;
+            case 4 -> Styles.DANGER;
+            default -> Styles.TEXT_NORMAL;
+        };
+    }
+
+    public static String[] priorityStyleClassList() {
+        return new String[] {Styles.TEXT_NORMAL, Styles.ACCENT, Styles.SUCCESS, Styles.WARNING, Styles.DANGER, Styles.TEXT_MUTED};
     }
 
     public void hashContents(MessageDigest digest) {

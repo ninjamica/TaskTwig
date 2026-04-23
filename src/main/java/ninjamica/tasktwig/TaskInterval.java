@@ -4,15 +4,11 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import javafx.beans.binding.BooleanBinding;
-import javafx.beans.binding.BooleanExpression;
-import javafx.beans.binding.ObjectBinding;
-import javafx.beans.binding.ObjectExpression;
+import javafx.beans.binding.*;
 import javafx.beans.property.*;
 import javafx.beans.value.ObservableBooleanValue;
 import javafx.beans.value.ObservableObjectValue;
 import javafx.collections.FXCollections;
-import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import tools.jackson.databind.JsonNode;
 
@@ -232,7 +228,7 @@ public abstract class TaskInterval {
             super(lastDone);
             doneBinding = lastDoneProperty.isNotNull();
             nextDueBinding = ObjectExpression.objectExpression(new SimpleObjectProperty<>(null));
-            inProgressBinding = doneBinding.not().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
+            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
         }
 
         @Override
@@ -265,7 +261,7 @@ public abstract class TaskInterval {
             this.dueDate.set(dueDate);
             doneBinding = lastDoneProperty.isNotNull();
             nextDueBinding = ObjectExpression.objectExpression(this.dueDate);
-            inProgressBinding = doneBinding.not().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
+            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
         }
 
         @Override
@@ -331,15 +327,10 @@ public abstract class TaskInterval {
                     || lastDone.equals(TaskTwig.today()));
                 }
             };
-            inProgressBinding = new BooleanBinding() {
-                {
-                    bind(intervalDays, nextDue, TaskTwig.todayValue());
-                }
-                @Override
-                protected boolean computeValue() {
-                    return !TaskTwig.today().isBefore(nextDue.get().minusDays(intervalDays.get()));
-                }
-            };
+            inProgressBinding = Bindings.createBooleanBinding(
+                    () -> !TaskTwig.today().isBefore(nextDue.get().minusDays(intervalDays.get())),
+                    intervalDays, nextDue, TaskTwig.todayValue()
+            );
             nextDueBinding = ObjectExpression.objectExpression(nextDue);
         }
 
@@ -429,52 +420,11 @@ public abstract class TaskInterval {
         public WeekInterval(byte bitmap, LocalDate lastDone) {
             super(lastDone);
             dayOfWeekMap.set(bitmap);
-            generateBinding();
-        }
 
-        private void generateBinding() {
-            doneBinding = new BooleanBinding() {
-                {
-                    bind(lastDoneProperty, dayOfWeekMap, TaskTwig.todayValue());
-                }
-
-                @Override
-                protected boolean computeValue() {
-                    LocalDate lastDone = lastDoneProperty.get();
-                    LocalDate lastDue = getLastDue();
-
-                    if (lastDone == null)
-                        return false;
-
-                    if (lastDue == null)
-                        return lastDoneProperty.get() != null;
-
-                    return lastDoneProperty.get().isAfter(lastDue);
-                }
-            };
-
-            inProgressBinding = doneBinding.not().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
-            nextDueBinding = new ObjectBinding<LocalDate>() {
-                {
-                    bind(dayOfWeekMap, TaskTwig.todayValue());
-                }
-
-                @Override
-                protected LocalDate computeValue() {
-                    LocalDate today = TaskTwig.today();
-                    int todayIndex = today.getDayOfWeek().ordinal();
-
-                    for (int daysPlus = 0; daysPlus < 7; daysPlus++) {
-                        int index = (todayIndex + daysPlus) % 7;
-
-                        if (isDueOn(index)) {
-                            return today.plusDays(daysPlus);
-                        }
-                    }
-
-                    return null;
-                }
-            };
+            doneBinding = Bindings.createBooleanBinding(this::checkDone,
+                    lastDoneProperty, dayOfWeekMap, TaskTwig.todayValue());
+            inProgressBinding = Bindings.createBooleanBinding(this::checkInProgress);
+            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dayOfWeekMap, TaskTwig.todayValue());
         }
 
         @Override
@@ -536,6 +486,50 @@ public abstract class TaskInterval {
 
             return null;
         }
+
+        private LocalDate getNextDue() {
+            LocalDate today = TaskTwig.today();
+            int todayIndex = today.getDayOfWeek().ordinal();
+
+            for (int daysPlus = 0; daysPlus < 7; daysPlus++) {
+                int dayOfWeek = (todayIndex + daysPlus) % 7;
+
+                if (isDueOn(dayOfWeek)) {
+                    return today.plusDays(daysPlus);
+                }
+            }
+
+            return null;
+        }
+
+        private boolean checkDone() {
+            LocalDate lastDone = lastDoneProperty.get();
+            LocalDate lastDue = getLastDue();
+
+            if (lastDone == null)
+                return false;
+
+            if (lastDue == null)
+                return true;
+
+            return lastDone.isAfter(lastDue);
+        }
+
+        private boolean checkInProgress() {
+            LocalDate today = TaskTwig.today();
+            LocalDate lastDone = lastDoneProperty.get();
+            LocalDate lastDue = getLastDue();
+
+            if (lastDone == null)
+                return true;
+            else if (lastDone.equals(today))
+                return true;
+
+            if (lastDue == null)
+                return false;
+
+            return !lastDone.isAfter(lastDue);
+        }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
@@ -555,52 +549,14 @@ public abstract class TaskInterval {
             super(lastDone);
             this.dates.setAll(dates);
             this.dates.sort(Comparator.naturalOrder());
-            this.dates.addListener((ListChangeListener<Integer>) c ->
-                    this.dates.sort(Comparator.naturalOrder()));
-            generateBinding();
+            this.dates.sort(Comparator.naturalOrder());
+            generateBindings();
         }
 
-        private void generateBinding() {
-            doneBinding = new BooleanBinding() {
-                {
-                    bind(lastDoneProperty, dates, TaskTwig.todayValue());
-                }
-
-                @Override
-                protected boolean computeValue() {
-                    LocalDate lastDone = lastDoneProperty.get();
-
-                    if (lastDone == null)
-                        return false;
-
-                    return lastDone.isAfter(getLastDue());
-                }
-            };
-
-            inProgressBinding = doneBinding.not().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
-            nextDueBinding = new ObjectBinding<LocalDate>() {
-                {
-                    bind(dates, TaskTwig.todayValue());
-                }
-
-                @Override
-                protected LocalDate computeValue() {
-                    if (dates.isEmpty())
-                        return null;
-
-                    LocalDate today = TaskTwig.today();
-                    int todayDate = today.getDayOfMonth();
-                    int maxDate = today.lengthOfMonth();
-
-                    for (int date : dates) {
-                        if (date >= todayDate) {
-                            return today.withDayOfMonth(Math.min(date, maxDate));
-                        }
-                    }
-
-                    return today.withDayOfMonth(Math.min(dates.getFirst(), maxDate)).plusMonths(1);
-                }
-            };
+        private void generateBindings() {
+            doneBinding = Bindings.createBooleanBinding(this::checkDone, lastDoneProperty, dates, TaskTwig.todayValue());
+            inProgressBinding = Bindings.createBooleanBinding(this::checkInProgress, lastDoneProperty, dates, TaskTwig.todayValue());
+            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dates, TaskTwig.todayValue());
         }
 
         @Override
@@ -652,6 +608,45 @@ public abstract class TaskInterval {
             }
 
             return today.withDayOfMonth(Math.min(dates.getLast(), maxDate));
+        }
+
+        private LocalDate getNextDue() {
+            if (dates.isEmpty())
+                return null;
+
+            LocalDate today = TaskTwig.today();
+            int todayDate = today.getDayOfMonth();
+            int maxDate = today.lengthOfMonth();
+
+            for (int date : dates) {
+                if (date >= todayDate) {
+                    return today.withDayOfMonth(Math.min(date, maxDate));
+                }
+            }
+
+            return today.withDayOfMonth(Math.min(dates.getFirst(), maxDate)).plusMonths(1);
+        }
+
+        private boolean checkDone() {
+            LocalDate lastDone = lastDoneProperty.get();
+
+            if (lastDone == null)
+                return false;
+
+            return lastDone.isAfter(getLastDue());
+        }
+
+        private boolean checkInProgress() {
+            LocalDate today = TaskTwig.today();
+            LocalDate lastDone = lastDoneProperty.get();
+
+            if (lastDone == null)
+                return true;
+
+            if (today.equals(lastDone))
+                return true;
+
+            return !lastDone.isAfter(getLastDue());
         }
     }
 }

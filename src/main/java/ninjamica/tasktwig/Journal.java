@@ -98,21 +98,27 @@ public record Journal(StringProperty text,
             return completedRoutines;
     }
 
+    public boolean isEmpty() {
+        return text.isEmpty().and(weight.isNull()).get() && completedRoutines.isEmpty() && completedTasks().isEmpty();
+    }
+
     public void hashContents(MessageDigest digest) {
-        digest.update(getText().getBytes(StandardCharsets.UTF_8));
+        if (!isEmpty()) {
+            digest.update(getText().getBytes(StandardCharsets.UTF_8));
 
-        Float weight = getWeight();
-        if (weight != null)
-            digest.update(getWeight().toString().getBytes(StandardCharsets.UTF_8));
+            Float weight = getWeight();
+            if (weight != null)
+                digest.update(getWeight().toString().getBytes(StandardCharsets.UTF_8));
 
-        List<String> tasks = getTasksJson();
-        for (String task : tasks) {
-            digest.update(task.getBytes(StandardCharsets.UTF_8));
-        }
+            List<String> tasks = getTasksJson();
+            for (String task : tasks) {
+                digest.update(task.getBytes(StandardCharsets.UTF_8));
+            }
 
-        List<String> routines = getRoutinesJson();
-        for (String routine : routines) {
-            digest.update(routine.getBytes(StandardCharsets.UTF_8));
+            List<String> routines = getRoutinesJson();
+            for (String routine : routines) {
+                digest.update(routine.getBytes(StandardCharsets.UTF_8));
+            }
         }
     }
 

@@ -51,7 +51,7 @@ public class TaskTwig implements Serializable {
     }
 
     private static final String DBX_API_KEY = "ul8ujplgavm586q";
-    private static final int CONFIG_VERSION = 3;
+    private static final int CONFIG_VERSION = 4;
 
     private static final File DATA_DIR = new File("data");
     private static final File DBX_DIR = new File(DATA_DIR.getPath() + "/dbx");
@@ -91,6 +91,7 @@ public class TaskTwig implements Serializable {
     private final ObjectProperty<LocalTime> nightStart = new SimpleObjectProperty<>(LocalTime.of(18,00));
     private final BooleanProperty autoSync = new SimpleBooleanProperty(true);
     private final IntegerProperty syncInterval = new SimpleIntegerProperty(15);
+    private final StringProperty visualTheme = new SimpleStringProperty();
 
     private DbxCredential dbxCredential;
     private final ObjectProperty<DbxClientV2> dbxClient = new SimpleObjectProperty<>();
@@ -127,6 +128,11 @@ public class TaskTwig implements Serializable {
                 writeConfigFile();
         });
         syncInterval.subscribe((oldVal, newVal) -> {
+            System.out.println(oldVal + " -> " + newVal);
+            if (!Objects.equals(newVal, oldVal))
+                writeConfigFile();
+        });
+        visualTheme.subscribe((oldVal, newVal) -> {
             System.out.println(oldVal + " -> " + newVal);
             if (!Objects.equals(newVal, oldVal))
                 writeConfigFile();
@@ -212,6 +218,14 @@ public class TaskTwig implements Serializable {
 
     public IntegerProperty syncIntervalProperty() {
         return syncInterval;
+    }
+
+    public String getVisualTheme() {
+        return visualTheme.get();
+    }
+
+    public void setVisualTheme(String visualTheme) {
+        this.visualTheme.set(visualTheme);
     }
 
     public void startSleep() {
@@ -332,6 +346,28 @@ public class TaskTwig implements Serializable {
             int version = parser.nextIntValue(0);
 
             switch (version) {
+                case 4 -> {
+                    assertEqual(parser.nextName(), "dayStart");
+                    dayStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "nightStart");
+                    nightStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "autoSync");
+                    autoSync.set(parser.nextBooleanValue());
+
+                    assertEqual(parser.nextName(), "syncInterval");
+                    syncInterval.set(parser.nextIntValue(15));
+
+                    assertEqual(parser.nextName(), "theme");
+                    visualTheme.set(parser.nextStringValue());
+
+                    assertEqual(parser.nextName(), "lastSyncedHash");
+                    if (parser.nextValue() == JsonToken.VALUE_STRING)
+                        lastSyncedHash = parser.getValueAsString();
+                    else
+                        lastSyncedHash = null;
+                }
                 case 3 -> {
                     assertEqual(parser.nextName(), "dayStart");
                     dayStart.set(LocalTime.parse(parser.nextStringValue()));
@@ -400,6 +436,7 @@ public class TaskTwig implements Serializable {
             generator.writePOJOProperty("nightStart", nightStart.get());
             generator.writeBooleanProperty("autoSync", autoSync.get());
             generator.writeNumberProperty("syncInterval", syncInterval.get());
+            generator.writeStringProperty("theme", visualTheme.get());
 
             if (lastSyncedHash != null)
                 generator.writeStringProperty("lastSyncedHash", lastSyncedHash);
@@ -611,7 +648,13 @@ public class TaskTwig implements Serializable {
 
                         generator.writeNumberProperty("version", Journal.VERSION);
 
-                        generator.writePOJOProperty("journals", this.journalMap);
+                        generator.writeObjectPropertyStart("journals");
+                        for (Map.Entry<LocalDate, Journal> journalEntry : journalMap.entrySet()) {
+                            if (!journalEntry.getValue().isEmpty()) {
+                                generator.writePOJOProperty(journalEntry.getKey().toString(), journalEntry.getValue());
+                            }
+                        }
+                        generator.writeEndObject();
 
                         generator.writeEndObject();
                     }

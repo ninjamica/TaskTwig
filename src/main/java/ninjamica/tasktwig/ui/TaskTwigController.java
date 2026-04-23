@@ -1,15 +1,13 @@
 package ninjamica.tasktwig.ui;
 
+import atlantafx.base.controls.*;
+import atlantafx.base.controls.Calendar;
+import atlantafx.base.theme.*;
+import atlantafx.base.util.Animations;
 import com.dropbox.core.DbxException;
-
-import atlantafx.base.controls.Card;
-import atlantafx.base.controls.Tile;
-import atlantafx.base.controls.ToggleSwitch;
-import atlantafx.base.theme.Styles;
 import javafx.animation.Animation;
 import javafx.animation.Interpolator;
 import javafx.animation.RotateTransition;
-import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleFloatProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -29,23 +27,14 @@ import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
-import javafx.scene.chart.AreaChart;
-import javafx.scene.chart.CategoryAxis;
-import javafx.scene.chart.LineChart;
-import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.XYChart;
+import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
+import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.input.*;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Pane;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.VBox;
-import javafx.scene.paint.*;
+import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -57,7 +46,7 @@ import ninjamica.tasktwig.*;
 import ninjamica.tasktwig.TaskTwig.CommitDiff;
 import ninjamica.tasktwig.TaskTwig.FileAction;
 import ninjamica.tasktwig.TwigList.TwigListItem;
-
+import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeBrands;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -75,7 +64,9 @@ import java.util.concurrent.CompletableFuture;
 
 public class TaskTwigController {
 
-    private VBox rootPane;
+    private final StackPane rootPane;
+    private final VBox contentPane;
+    private final ModalPane modalPane;
 
     private ListView<Routine> todayRoutineListView;
     private TreeView<Task> todayTaskTreeView;
@@ -87,33 +78,18 @@ public class TaskTwigController {
     private Button sleepButton;
     private Label sleepStatusLabel;
     private TableView<Sleep> sleepTableView;
-    private TableColumn<Sleep, LocalDate> sleepDateCol;
-    private TableColumn<Sleep, LocalTime> sleepStartCol;
-    private TableColumn<Sleep, LocalTime> sleepEndCol;
-    private TableColumn<Sleep, Float> sleepLengthCol;
     private LineChart<String, Number> sleepTimeChart;
     private AreaChart<String, Number> sleepLenChart;
-    private NumberAxis sleepTimeNumAxis;
 
     private Button workoutButton;
     private Label workoutStatusLabel;
     private TableView<Workout> workoutTableView;
-    private TableColumn<Workout, String> workoutDateCol;
-    private TableColumn<Workout, Float> workoutLengthCol;
-    private TableColumn<Workout, String> workoutExerciseCol;
 
+    private TaskContent taskContent;
     private TreeTableView<Task> taskTreeTable;
-    private TreeTableColumn<Task, Task> taskNameCol;
-    private TreeTableColumn<Task, Integer> taskPriorityCol;
-    private TreeTableColumn<Task, TaskInterval> taskDateTimeCol;
-    private TreeTableColumn<Task, TaskInterval> taskRepeatCol;
     private TreeView<Object> listTree;
 
     private TableView<Routine> routineTable;
-    private TableColumn<Routine, String> routineNameCol;
-    private TableColumn<Routine, RoutineInterval> routineIntervalCol;
-    private TableColumn<Routine, LocalTime> routineDueCol;
-    private Button routineButton;
 
     private ListView<LocalDate> journalListView;
     private TextArea journalTextArea;
@@ -121,15 +97,13 @@ public class TaskTwigController {
     private ListView<String> journalTaskList;
     private Spinner<Float> journalWeightSpinner;
 
-    private Spinner<LocalTime> settingsDayStartSpinner;
-    private Spinner<LocalTime> settingsNightStartSpinner;
+    private TimeInput settingsDayStartInput;
+    private TimeInput settingsNightStartInput;
     private Spinner<Integer> settingsIntervalSpinner;
-    private ToggleSwitch settingsAutoSyncToggle;
     private Label settingsDbxName;
     private Button settingsDbxButton;
 
     private Button syncButton;
-    private Label syncLabel;
     
     // private static final String darkStylesheet = TaskTwigController.class.getResource("fxml/dark-theme.css").toExternalForm();
     private static final String chartStylesheet = TaskTwigController.class.getResource("fxml/areaChart.css").toExternalForm();
@@ -140,18 +114,29 @@ public class TaskTwigController {
     private static final LocalTime timeChartRefTime = LocalTime.of(12, 00);
     private static final DataFormat DRAG_DROP_MIME_FORMAT = new DataFormat("application/x-java-serialized-object");
 
+    private static final Theme[] themes = {
+            new PrimerLight(),
+            new PrimerDark(),
+            new NordLight(),
+            new NordDark(),
+            new CupertinoLight(),
+            new CupertinoDark(),
+            new Dracula()
+    };
+
     private final TaskTwig twig = new TaskTwig();
-    private Application application;
+    private final TaskTwigApplication application;
     private Stage stage;
     private Subscription subscriptions = Subscription.EMPTY;
-    private SaveSyncService backgroundService;
+    private final SaveSyncService backgroundService;
 
     private final XYChart.Series<String, Number> sleepLenChartData = new XYChart.Series<>();
     private final XYChart.Series<String, Number> sleepStartChartData = new XYChart.Series<>();
     private final XYChart.Series<String, Number> sleepEndChartData = new XYChart.Series<>();
 
 
-    public TaskTwigController() {
+    public TaskTwigController(TaskTwigApplication application) {
+        this.application = application;
         backgroundService = new SaveSyncService(this);
         
         ToolBar toolBar = initToolBar();
@@ -167,15 +152,19 @@ public class TaskTwigController {
         );
         tabPane.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
         
-        rootPane = new VBox(tabPane, toolBar);
-        rootPane.setPrefSize(910, 670);
-        rootPane.setDisable(true);
+        contentPane = new VBox(tabPane, toolBar);
+        contentPane.setPrefSize(1000, 700);
+        VBox.setVgrow(tabPane, Priority.ALWAYS);
+        contentPane.setDisable(true);
 
+        modalPane = new ModalPane();
+
+        rootPane = new StackPane(contentPane, modalPane);
 
         Thread twigInitThread = new Thread(() -> {
             twig.authDbxFromFile();
             Platform.runLater(() -> {
-                rootPane.setDisable(false);
+                contentPane.setDisable(false);
                 attachTwigData();
             });
         });
@@ -183,10 +172,10 @@ public class TaskTwigController {
     }
 
     private ToolBar initToolBar() {
-        syncButton = new Button("Sync");
+        syncButton = new Button();
+        syncButton.getStyleClass().addAll(Styles.BUTTON_OUTLINED, Styles.ACCENT);
         syncButton.setOnAction(this::onSyncButton);
-        syncLabel = new Label();
-        return new ToolBar(syncButton, syncLabel);
+        return new ToolBar(syncButton);
     }
 
     private Tab createTodayTab() {
@@ -198,11 +187,14 @@ public class TaskTwigController {
         todayGridPane.setPadding(new Insets(20));
         tab.setContent(todayGridPane);
 
-        Label routineLabel = new Label("Routines:");
-        routineLabel.fontProperty().set(Font.font(16));
-        todayGridPane.add(routineLabel, 0, 0);
+        // Routines
+        Label routineLabel = new Label("Routines");
+        routineLabel.getStyleClass().add(Styles.TITLE_4);
+        HBox routineLabelBox = new HBox(10, new FontIcon(FontAwesomeSolid.CALENDAR_DAY), routineLabel);
+        routineLabelBox.setAlignment(Pos.CENTER);
         
         todayRoutineListView = new ListView<>();
+        todayRoutineListView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
         todayRoutineListView.setCellFactory(col -> new ListCell<>() {
             private final CheckBox checkBox = new CheckBox();
             private final Text name = new Text();
@@ -271,17 +263,25 @@ public class TaskTwigController {
                 }
             }
         });
-        todayGridPane.add(todayRoutineListView, 0, 1, 1, 3);
-        GridPane.setHgrow(todayRoutineListView, Priority.ALWAYS);
-        GridPane.setVgrow(todayRoutineListView, Priority.ALWAYS);
 
-        Label taskLabel = new Label("Tasks:");
-        taskLabel.setFont(Font.font(16));
-        todayGridPane.add(taskLabel, 1, 0);
+        Card routineCard = new Card();
+        routineCard.setHeader(routineLabelBox);
+        routineCard.setBody(todayRoutineListView);
+        routineCard.getStyleClass().addAll(Styles.WARNING);
+        todayGridPane.add(routineCard, 0, 0, 1, 2);
+        GridPane.setHgrow(routineCard, Priority.ALWAYS);
+        GridPane.setVgrow(routineCard, Priority.ALWAYS);
+
+        // Tasks
+        Label taskLabel = new Label("Tasks");
+        taskLabel.getStyleClass().add(Styles.TITLE_4);
+        HBox taskLabelBox = new HBox(10, new FontIcon(FontAwesomeSolid.TASKS), taskLabel);
+        taskLabelBox.setAlignment(Pos.CENTER);
         
         todayTaskTreeView = new TreeView<>();
         todayTaskTreeView.setShowRoot(false);
-        todayTaskTreeView.setRoot(new TreeItem<Task>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
+        todayTaskTreeView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
+        todayTaskTreeView.setRoot(new TreeItem<>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
         todayTaskTreeView.setCellFactory(treeView -> new TreeCell<>() {
             private Subscription sub = Subscription.EMPTY;
 
@@ -295,6 +295,9 @@ public class TaskTwigController {
             });
 
             {
+                name.getStyleClass().add(Styles.TEXT);
+                dueText.getStyleClass().add(Styles.TEXT);
+
                 checkBox.setFocusTraversable(false);
                 checkBox.selectedProperty().subscribe(selected -> updateFormatting(getItem()));
 
@@ -342,17 +345,22 @@ public class TaskTwigController {
             private void updateFormatting(Task item) {
                 if (item != null) {
                     if (item.isDone()) {
-                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+//                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+                        name.getStyleClass().add(Styles.TEXT_STRIKETHROUGH);
+                        Styles.addStyleClass(name, Styles.TEXT_MUTED, Task.priorityStyleClassList());
                         dueText.setText(null);
                     } else {
-                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
+//                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
+                        name.getStyleClass().remove(Styles.TEXT_STRIKETHROUGH);
+                        Styles.addStyleClass(name, Task.priorityStyleClass(item.getPriority()), Task.priorityStyleClassList());
 
                         if (item.getInterval().isOverdue()) {
-                            dueText.setStyle("-fx-fill: #ff0000");
+                            Styles.addStyleClass(dueText, Styles.DANGER, Task.priorityStyleClassList());
                             dueText.textProperty().unbind();
                             dueText.setText("Overdue!");
                         } else {
-                            dueText.setStyle("-fx-fill: #a1a1a1");
+//                            dueText.setStyle("-fx-fill: #a1a1a1");
+                            Styles.addStyleClass(dueText, Styles.TEXT_SUBTLE, Task.priorityStyleClassList());
                             if (item.getInterval().nextDue() != null) {
                                 if (item.getDueTime() != null)
                                     dueText.setText(shortDateFormat.format(item.getInterval().nextDue()) + " at " + timeFormat.format(item.getDueTime()));
@@ -366,26 +374,33 @@ public class TaskTwigController {
                 }
             }
         });
-        todayGridPane.add(todayTaskTreeView, 1, 1, 1, 3);
-        GridPane.setHgrow(todayTaskTreeView, Priority.ALWAYS);
-        GridPane.setVgrow(todayTaskTreeView, Priority.ALWAYS);
 
-    // Journal
+        Card taskCard = new Card();
+        taskCard.setHeader(taskLabelBox);
+        taskCard.setBody(todayTaskTreeView);
+        taskCard.getStyleClass().add(Styles.ELEVATED_1);
+        todayGridPane.add(taskCard, 1, 0, 1, 2);
+        GridPane.setHgrow(taskCard, Priority.ALWAYS);
+        GridPane.setVgrow(taskCard, Priority.ALWAYS);
+
+        // Journal
         todayJournalTextArea = new TextArea();
         todayJournalTextArea.setPromptText("Type journal here...");
         todayJournalTextArea.setWrapText(true);
         todayJournalTextArea.setPrefWidth(150);
-        todayGridPane.add(todayJournalTextArea, 2, 3);
+        todayJournalTextArea.getStyleClass().add(Styles.ELEVATED_1);
+        todayGridPane.add(todayJournalTextArea, 2, 1);
         GridPane.setHgrow(todayJournalTextArea, Priority.NEVER);
         GridPane.setVgrow(todayJournalTextArea, Priority.ALWAYS);
         
 
-    // GridPane containing the rest of the interactions (others)
+        // GridPane containing the rest of the interactions (others)
         GridPane othersGridPane = new GridPane(3, 15);
         GridPane.setHgrow(othersGridPane, Priority.NEVER);
         Card othersCard = new Card();
         othersCard.setBody(othersGridPane);
-        todayGridPane.add(othersCard, 2, 0, 1, 2);
+        othersCard.getStyleClass().add(Styles.ELEVATED_1);
+        todayGridPane.add(othersCard, 2, 0, 1, 1);
 
         Label sleepLabel = new Label("Sleep:", new FontIcon(FontAwesomeSolid.BED));
         sleepLabel.setFont(Font.font(14));
@@ -419,7 +434,7 @@ public class TaskTwigController {
         tab.setGraphic(new FontIcon(FontAwesomeSolid.BED));
 
         GridPane sleepGridPane = new GridPane(5, 10);
-        sleepGridPane.setPadding(new Insets(20));
+        sleepGridPane.setPadding(new Insets(15));
         sleepGridPane.getStyleClass().add(Styles.DENSE);
         sleepGridPane.setAlignment(Pos.CENTER_LEFT);
         tab.setContent(sleepGridPane);
@@ -436,13 +451,13 @@ public class TaskTwigController {
 
 
         sleepTableView = new TableView<>();
-        sleepTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        sleepTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
         sleepTableView.getStyleClass().add(Styles.DENSE);
         sleepGridPane.add(sleepTableView, 0, 1, 2, 1);
         GridPane.setVgrow(sleepTableView, Priority.ALWAYS);
 
-        sleepDateCol = new TableColumn<>("Date");
-        sleepDateCol.setCellFactory(col -> new TableCell<Sleep, LocalDate>() {
+        TableColumn<Sleep, LocalDate> sleepDateCol = new TableColumn<>("Date");
+        sleepDateCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(LocalDate item, boolean empty) {
                 super.updateItem(item, empty);
@@ -455,15 +470,15 @@ public class TaskTwigController {
         });
         sleepDateCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().end().toLocalDate().minusDays(1)));
 
-        sleepStartCol = new TableColumn<>("Start");
-        sleepStartCol.setCellFactory(column -> new timeTableCell<Sleep>(timeFormat));
+        TableColumn<Sleep, LocalTime> sleepStartCol = new TableColumn<>("Start");
+        sleepStartCol.setCellFactory(column -> new timeTableCell<>(timeFormat));
         sleepStartCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().start().toLocalTime()));
 
-        sleepEndCol = new TableColumn<>("End");
-        sleepEndCol.setCellFactory(column -> new timeTableCell<Sleep>(timeFormat));
+        TableColumn<Sleep, LocalTime> sleepEndCol = new TableColumn<>("End");
+        sleepEndCol.setCellFactory(column -> new timeTableCell<>(timeFormat));
         sleepEndCol.setCellValueFactory(sleep -> new SimpleObjectProperty<>(sleep.getValue().end().toLocalTime()));
 
-        sleepLengthCol = new TableColumn<>("Sleep (hours)");
+        TableColumn<Sleep, Float> sleepLengthCol = new TableColumn<>("Sleep (hours)");
         sleepLengthCol.setCellValueFactory(sleep -> new SimpleFloatProperty(sleep.getValue().length().toMinutes() / 60f).asObject());
 
         sleepTableView.getColumns().addAll(sleepDateCol, sleepStartCol, sleepEndCol, sleepLengthCol);
@@ -482,7 +497,7 @@ public class TaskTwigController {
         Tab sleepTimeChartTab = new Tab("Sleep Times");
         sleepStartChartData.setName("Sleep Start");
         sleepEndChartData.setName("SleepEnd");
-        sleepTimeNumAxis = new NumberAxis("Sleep (hours)", 3.0, 11.0, 2.0);
+        NumberAxis sleepTimeNumAxis = new NumberAxis("Sleep (hours)", 3.0, 11.0, 2.0);
         sleepTimeNumAxis.setTickLabelFormatter(new StringConverter<>() {
             @Override
             public String toString(Number num) {
@@ -504,7 +519,7 @@ public class TaskTwigController {
         sleepTimeChartTab.setContent(sleepTimeChart);
 
         TabPane chartPane = new TabPane(sleepLenChartTab, sleepTimeChartTab);
-        chartPane.setSide(Side.BOTTOM);
+        chartPane.setSide(Side.TOP);
         chartPane.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
         sleepGridPane.add(chartPane, 0, 2, 2, 1);
         GridPane.setVgrow(chartPane, Priority.ALWAYS);
@@ -516,7 +531,8 @@ public class TaskTwigController {
         Tab tab = new Tab("Exercise");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.RUNNING));
 
-        GridPane exerciseGridPane = new GridPane();
+        GridPane exerciseGridPane = new GridPane(0, 10);
+        exerciseGridPane.setPadding(new Insets(15));
         tab.setContent(exerciseGridPane);
 
         workoutButton = new Button("Start");
@@ -535,14 +551,15 @@ public class TaskTwigController {
 
 
         workoutTableView = new TableView<>();
-        
-        workoutDateCol = new TableColumn<>("Date");
+        workoutTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
+
+        TableColumn<Workout, String> workoutDateCol = new TableColumn<>("Date");
         workoutDateCol.setCellValueFactory(workout -> new SimpleStringProperty(workout.getValue().start().toLocalDate().format(dateFormat)));
 
-        workoutLengthCol = new TableColumn<>("Length (minutes)");
+        TableColumn<Workout, Float> workoutLengthCol = new TableColumn<>("Length (minutes)");
         workoutLengthCol.setCellValueFactory(workout -> new SimpleFloatProperty(workout.getValue().length().toSeconds() / 60f).asObject());
 
-        workoutExerciseCol = new TableColumn<>("Exercises");
+        TableColumn<Workout, String> workoutExerciseCol = new TableColumn<>("Exercises");
         workoutExerciseCol.setCellValueFactory(workout -> genWorkoutExercises(workout.getValue().exercises()));
         
         workoutTableView.getColumns().addAll(workoutDateCol, workoutLengthCol, workoutExerciseCol);
@@ -556,20 +573,23 @@ public class TaskTwigController {
         Tab tab = new Tab("Tasks");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.TASKS));
 
-        GridPane taskGridPane = new GridPane();
+        GridPane taskGridPane = new GridPane(0, 10);
+        taskGridPane.setPadding(new Insets(15));
         tab.setContent(taskGridPane);
 
         Button newTaskButton = new Button("New Task");
+        newTaskButton.setOnAction(this::onNewTaskButtonClick);
         taskGridPane.add(newTaskButton, 0, 0);
 
-        TaskContent taskDetailView = new TaskContent();
-        ScrollPane taskDetailScrollPane = new ScrollPane(taskDetailView);
+        taskContent = new TaskContent();
+        ScrollPane taskDetailScrollPane = new ScrollPane(taskContent);
         taskDetailScrollPane.setHbarPolicy(ScrollBarPolicy.NEVER);
         taskGridPane.add(taskDetailScrollPane, 1,1);
 
         taskTreeTable = new TreeTableView<>(new TreeItem<>(new Task("placeholder", new TaskInterval.NoInterval(), 0)));
         taskTreeTable.getStyleClass().add(Styles.DENSE);
         taskTreeTable.setShowRoot(false);
+        taskTreeTable.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
         taskTreeTable.setRowFactory(table -> new TreeTableRow<>() {
             private Subscription sub = Subscription.EMPTY;
             private final ContextMenu contextMenu;
@@ -602,8 +622,7 @@ public class TaskTwigController {
                             List<Integer> dragPos = (ArrayList<Integer>)db.getContent(DRAG_DROP_MIME_FORMAT);
                             List<Integer> thisPos = getRowPos();
                             if (!thisPos.equals(dragPos) && !(posHaveSameParent(thisPos, dragPos) && thisPos.getFirst() - 1 == dragPos.getFirst())) {
-                                if (posHaveSameParent(getRowPos(), getRowPos()))
-                                
+
                                 event.acceptTransferModes(TransferMode.MOVE);
                                 event.consume();
 
@@ -628,7 +647,7 @@ public class TaskTwigController {
 
                         List<Integer> newPos;
                         if (isEmpty()) {
-                            newPos = Arrays.asList(table.getRoot().getChildren().size());
+                            newPos = List.of(table.getRoot().getChildren().size());
                         }
                         else {
                             newPos = getRowPos();
@@ -664,13 +683,31 @@ public class TaskTwigController {
 
                 if (empty || task == null) {
                     setContextMenu(null);
+                    setStyle("");
                 }
                 else {
                     setContextMenu(contextMenu);
                     TreeItem<Task> treeItem = getTreeItem();
                     treeItem.expandedProperty().bindBidirectional(task.expandedProperty());
-                    sub = () -> treeItem.expandedProperty().unbindBidirectional(task.expandedProperty());
+                    applyPriorityColor(task.getPriority());
+                    sub = Subscription.combine(
+                            () -> treeItem.expandedProperty().unbindBidirectional(task.expandedProperty()),
+                            task.priorityProperty().subscribe(this::applyPriorityColor),
+                            selectedProperty().subscribe(selected -> applyPriorityColor(task.getPriority()))
+                    );
                 }
+            }
+
+            private void applyPriorityColor(Number priority) {
+                String color = switch(priority.intValue()) {
+                    case 1 -> "-color-accent";
+                    case 2 -> "-color-success";
+                    case 3 -> "-color-warning";
+                    case 4 -> "-color-danger";
+                    default -> "-color-neutral";
+                };
+
+                setStyle("-fx-background-color: " + color + (isSelected() ? "-muted" : "-subtle"));
             }
 
             /**
@@ -709,23 +746,22 @@ public class TaskTwigController {
 
             private TreeItem<Task> removeTask(List<Integer> pos) {
                 System.out.println("Removing task from " + pos);
+                TreeItem<Task> treeItem;
                 if (pos.size() == 1) {
-                    TreeItem<Task> treeItem = table.getRoot().getChildren().get((int)pos.getFirst());
+                    treeItem = table.getRoot().getChildren().get(pos.getFirst());
                     twig.taskList().remove(treeItem.getValue());
-                    return treeItem;
                 }
                 else {
-                    TreeItem<Task> treeItem = getItemFromPos(pos);
-
+                    treeItem = getItemFromPos(pos);
                     treeItem.getParent().getValue().getChildren().remove(treeItem.getValue());
-                    return treeItem;
                 }
+                return treeItem;
             }
 
             private void insertTask(List<Integer> pos, Task task) {
                 System.out.println("Inserting task at " + pos);
                 if (pos.size() == 1) {
-                    twig.taskList().add((int)pos.getFirst(), task);
+                    twig.taskList().add(pos.getFirst(), task);
                 }
                 else {
                     TreeItem<Task> treeItem = table.getRoot();
@@ -740,14 +776,15 @@ public class TaskTwigController {
         });
         taskTreeTable.getSelectionModel().selectedItemProperty().subscribe(item -> {
             if (item == null) {
-                taskDetailView.setTask(null);
+                taskContent.setTask(null);
             }
             else {
-                taskDetailView.setTask(item.getValue());
+                taskContent.setTask(item.getValue());
+//                taskContent.requestFocus();
             }
         });
 
-        taskNameCol = new TreeTableColumn<>("Name");
+        TreeTableColumn<Task, Task> taskNameCol = new TreeTableColumn<>("Name");
         taskNameCol.setCellValueFactory(cell -> cell.getValue().valueProperty());
         taskNameCol.setCellFactory(col -> new TreeTableCell<>() {
 
@@ -775,29 +812,11 @@ public class TaskTwigController {
                 }
             }
         });
-        
-        taskPriorityCol = new TreeTableColumn<>("Priority");
-        taskPriorityCol.setCellValueFactory(cell -> cell.getValue().getValue().priorityProperty().asObject());
-        taskPriorityCol.setCellFactory(col -> new TreeTableCell<>() {
-            {
-                setAlignment(Pos.CENTER);
-            }
-            @Override
-            protected void updateItem(Integer item, boolean empty) {
-                super.updateItem(item, empty);
 
-                if (empty || item == null) {
-                    setText(null);
-                    setBackground(Background.EMPTY);
-                }
-                else {
-                    setText(item.toString());
-                    setBackground(Background.fill(Color.valueOf(Task.getPriorityColor(item))));
-                }
-            }
-        });
-        
-        taskDateTimeCol = new TreeTableColumn<>("Due Date/Time");
+        TreeTableColumn<Task, Integer> taskPriorityCol = new TreeTableColumn<>("Priority");
+        taskPriorityCol.setCellValueFactory(cell -> cell.getValue().getValue().priorityProperty().asObject());
+
+        TreeTableColumn<Task, TaskInterval> taskDateTimeCol = new TreeTableColumn<>("Due Date/Time");
         taskDateTimeCol.setCellFactory(column -> new TreeTableCell<>() {
             private Subscription sub = Subscription.EMPTY;
 
@@ -835,8 +854,8 @@ public class TaskTwigController {
             }
         });
         taskDateTimeCol.setCellValueFactory(cell -> cell.getValue().getValue().intervalProperty());
-        
-        taskRepeatCol = new TreeTableColumn<>("Repeat");
+
+        TreeTableColumn<Task, TaskInterval> taskRepeatCol = new TreeTableColumn<>("Repeat");
         taskRepeatCol.setCellFactory(column -> new TreeTableCell<>() {
             private Subscription itemSubs = Subscription.EMPTY;
 
@@ -919,10 +938,11 @@ public class TaskTwigController {
         Tab tab = new Tab("Routines");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.CALENDAR_CHECK));
 
-        GridPane routineGridPane = new GridPane();
+        GridPane routineGridPane = new GridPane(0, 10);
+        routineGridPane.setPadding(new Insets(15));
         tab.setContent(routineGridPane);
 
-        routineButton = new Button("New Routine");
+        Button routineButton = new Button("New Routine");
         routineButton.setOnAction(this::createRoutine);
         routineGridPane.add(routineButton, 0, 0);
 
@@ -932,6 +952,7 @@ public class TaskTwigController {
         routineGridPane.add(routineDetailScrollPane, 1, 1);
 
         routineTable = new TableView<>();
+        routineTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
         routineTable.setRowFactory(table -> {
             TableRow<Routine> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
@@ -1000,19 +1021,12 @@ public class TaskTwigController {
 
             return row;
         });
-        routineTable.getSelectionModel().selectedItemProperty().subscribe(item -> {
-            if (item == null) {
-                routineDetailView.setRoutine(null);
-            }
-            else {
-                routineDetailView.setRoutine(item);
-            }
-        });
-        
-        routineNameCol = new TableColumn<>("Name");
+        routineTable.getSelectionModel().selectedItemProperty().subscribe(routineDetailView::setRoutine);
+
+        TableColumn<Routine, String> routineNameCol = new TableColumn<>("Name");
         routineNameCol.setCellValueFactory(routine -> routine.getValue().name());
 
-        routineIntervalCol = new TableColumn<>("Interval");
+        TableColumn<Routine, RoutineInterval> routineIntervalCol = new TableColumn<>("Interval");
         routineIntervalCol.setCellValueFactory(routine -> routine.getValue().interval());
         routineIntervalCol.setCellFactory(col -> new TableCell<>() {
             private Subscription itemSubs = Subscription.EMPTY;
@@ -1060,13 +1074,15 @@ public class TaskTwigController {
                     setText("Every " + day.getInterval() + " days");
             }
         });
-        
-        routineDueCol = new TableColumn<>("Due Time");
+
+        TableColumn<Routine, LocalTime> routineDueCol = new TableColumn<>("Due Time");
         routineDueCol.setCellValueFactory(routine -> routine.getValue().dueTime());
         routineDueCol.setCellFactory(column -> new timeTableCell<>(timeFormat) {});
 
         routineTable.getColumns().addAll(routineNameCol, routineIntervalCol, routineDueCol);
         routineGridPane.add(routineTable, 0, 1);
+        GridPane.setHgrow(routineTable, Priority.ALWAYS);
+        GridPane.setVgrow(routineTable, Priority.ALWAYS);
 
         return tab;
     }
@@ -1076,7 +1092,7 @@ public class TaskTwigController {
         tab.setGraphic(new FontIcon(FontAwesomeSolid.LIST));
 
         listTree = new TreeView<>(new TreeItem<>());
-        listTree.getRoot().setExpanded(true);
+        listTree.setShowRoot(false);
         listTree.setCellFactory(treeView -> new TreeCell<>() {
             private Subscription subscription = Subscription.EMPTY;
 
@@ -1138,7 +1154,7 @@ public class TaskTwigController {
                         }
                         case TwigListItem listItem -> {
                             Label label = new Label();
-                            subscription = listItem.name().subscribe(name -> label.setText(name)).and(subscription);
+                            subscription = listItem.name().subscribe(label::setText).and(subscription);
 
                             CheckBox checkBox = new CheckBox();
                             checkBox.setSelected(listItem.isDone());
@@ -1196,8 +1212,18 @@ public class TaskTwigController {
         Tab tab = new Tab("Journals");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.BOOK));
 
-        GridPane journalGridPane = new GridPane();
+        GridPane journalGridPane = new GridPane(10, 10);
+        journalGridPane.setPadding(new Insets(15));
         tab.setContent(journalGridPane);
+
+        Calendar journalCalendar = new Calendar();
+        journalCalendar.setDayCellFactory(calendar -> new DateCell() {
+            @Override
+            public void updateItem(LocalDate item, boolean empty) {
+                super.updateItem(item, empty);
+                setDisable(empty || !twig.journalMap().containsKey(item));
+            }
+        });
 
         journalListView = new ListView<>();
         journalListView.setCellFactory(list -> new ListCell<>() {
@@ -1216,7 +1242,9 @@ public class TaskTwigController {
         journalListView.getSelectionModel().selectedItemProperty().subscribe((oldValue, newValue) -> {
             if (oldValue != null && twig.journalMap().containsKey(oldValue)) {
                 journalTextArea.textProperty().unbindBidirectional(twig.journalMap().get(oldValue).textProperty());
+                journalTextArea.clear();
                 journalWeightSpinner.getValueFactory().valueProperty().unbindBidirectional(twig.journalMap().get(oldValue).weight());
+                journalWeightSpinner.getValueFactory().setValue(null);
                 journalRoutineList.setItems(null);
                 journalTaskList.setItems(null);
             }
@@ -1231,12 +1259,22 @@ public class TaskTwigController {
                 journalTextArea.setPromptText("Type journal here...");
             }
         });
-        journalGridPane.add(journalListView, 0, 0,1, 4);
+
+        VBox journalLeftVBox = new VBox(10, journalCalendar, journalListView);
+        journalLeftVBox.setMinWidth(Region.USE_PREF_SIZE);
+        VBox.setVgrow(journalListView, Priority.ALWAYS);
+        journalGridPane.add(journalLeftVBox, 0, 0,1, 4);
+        GridPane.setHgrow(journalLeftVBox, Priority.SOMETIMES);
+
+        journalCalendar.valueProperty().subscribe(journalListView.getSelectionModel()::select);
+        journalListView.getSelectionModel().selectedItemProperty().subscribe(journalCalendar::setValue);
 
         journalTextArea = new TextArea();
         journalTextArea.setPromptText("Select a date on the left to see journal");
         journalTextArea.setWrapText(true);
         journalGridPane.add(journalTextArea, 1, 0, 1, 4);
+        GridPane.setHgrow(journalTextArea, Priority.ALWAYS);
+        GridPane.setVgrow(journalTextArea, Priority.ALWAYS);
 
         Label weightLabel = new Label("Weight:");
         weightLabel.setFont(Font.font(16));
@@ -1248,15 +1286,21 @@ public class TaskTwigController {
         
         journalRoutineList = new ListView<>();
         journalRoutineList.setSelectionModel(null);
+        journalRoutineList.getStyleClass().addAll(Tweaks.EDGE_TO_EDGE, Styles.DENSE);
         TitledPane routinePane = new TitledPane("Completed Routines", journalRoutineList);
         routinePane.getStyleClass().add(Styles.DENSE);
+        routinePane.setMaxHeight(Double.MAX_VALUE);
         journalGridPane.add(routinePane, 2, 2);
+        GridPane.setVgrow(routinePane, Priority.ALWAYS);
 
         journalTaskList = new ListView<>();
         journalTaskList.setSelectionModel(null);
+        journalTaskList.getStyleClass().addAll(Tweaks.EDGE_TO_EDGE, Styles.DENSE);
         TitledPane taskPane = new TitledPane("Completed Tasks", journalTaskList);
         taskPane.getStyleClass().add(Styles.DENSE);
+        taskPane.setMaxHeight(Double.MAX_VALUE);
         journalGridPane.add(taskPane, 2, 3);
+        GridPane.setVgrow(taskPane, Priority.ALWAYS);
 
         return tab;
     }
@@ -1273,20 +1317,20 @@ public class TaskTwigController {
             "The time of the day which separates between late night and early morning",
             new FontIcon(FontAwesomeSolid.SUN)
         );
-        settingsDayStartSpinner = new Spinner<>();
-        new TimeSpinner(settingsDayStartSpinner, null);
-        startOfDayTile.setAction(settingsDayStartSpinner);
-        startOfDayTile.setActionHandler(settingsDayStartSpinner::requestFocus);
+        settingsDayStartInput = new TimeInput(twig.getDayStart().getValue(), false);
+        System.out.println(settingsDayStartInput.getText());
+        System.out.println(settingsDayStartInput.getTime());
+        startOfDayTile.setAction(settingsDayStartInput);
+        startOfDayTile.setActionHandler(settingsDayStartInput::requestFocus);
 
         Tile startOfNightTile = new Tile(
             "Start of night",
             "The time of day which separates late afternoon/evening from early night",
             new FontIcon(FontAwesomeSolid.MOON)
         );
-        settingsNightStartSpinner = new Spinner<>();
-        new TimeSpinner(settingsNightStartSpinner, null);
-        startOfNightTile.setAction(settingsNightStartSpinner);
-        startOfNightTile.setActionHandler(settingsNightStartSpinner::requestFocus);
+        settingsNightStartInput = new TimeInput(twig.getNightStart().getValue(), false);
+        startOfNightTile.setAction(settingsNightStartInput);
+        startOfNightTile.setActionHandler(settingsNightStartInput::requestFocus);
         
         Tile autoSyncIntervalTile = new Tile(
             "Auto Save/Sync Interval",
@@ -1305,7 +1349,7 @@ public class TaskTwigController {
             "Whether to automatically sync with Dropbox when data is saved periodically",
             new FontIcon(FontAwesomeSolid.CLOUD)
         );
-        settingsAutoSyncToggle = new ToggleSwitch();
+        ToggleSwitch settingsAutoSyncToggle = new ToggleSwitch();
         settingsAutoSyncToggle.selectedProperty().subscribe((autoSync) -> twig.autoSyncProperty().set(autoSync));
         autoSyncToggleTile.setAction(settingsAutoSyncToggle);
         autoSyncToggleTile.setActionHandler(settingsAutoSyncToggle::fire);
@@ -1324,6 +1368,37 @@ public class TaskTwigController {
         dbxTile.setAction(dbxVBox);
         dbxTile.setActionHandler(settingsDbxButton::fire);
 
+        Tile themeTile = new Tile(
+            "Theme",
+            "Visual theme to use throughout the app",
+            new FontIcon(FontAwesomeSolid.PAINT_BRUSH)
+        );
+        ChoiceBox<Theme> settingsThemeChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(themes));
+        settingsThemeChoiceBox.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Theme object) {
+                return object != null ? object.getName() : "";
+            }
+
+            @Override
+            public Theme fromString(String s) {
+                for (Theme theme : themes) {
+                    if (theme.getName().equals(s)) {
+                        return theme;
+                    }
+                }
+                return null;
+            }
+        });
+        settingsThemeChoiceBox.setOnAction(action -> {
+            Theme theme =  settingsThemeChoiceBox.getValue();
+            application.setTheme(theme);
+            twig.setVisualTheme(theme.getName());
+        });
+        settingsThemeChoiceBox.setValue(settingsThemeChoiceBox.getConverter().fromString(twig.getVisualTheme()));
+        themeTile.setAction(settingsThemeChoiceBox);
+        themeTile.setActionHandler(settingsThemeChoiceBox::show);
+
         VBox settingsVBox = new VBox(
             settingsLabel,
             new Separator(),
@@ -1332,7 +1407,9 @@ public class TaskTwigController {
             autoSyncIntervalTile,
             autoSyncToggleTile,
             new Separator(),
-            dbxTile
+            dbxTile,
+            new Separator(),
+            themeTile
         );
         settingsVBox.setAlignment(Pos.TOP_CENTER);
         settingsVBox.setPadding(new Insets(20));
@@ -1364,11 +1441,8 @@ public class TaskTwigController {
         var filteredTasks = twig.taskList().filtered(Task::inProgress);
         populateTaskTree(todayTaskTreeView.getRoot(), filteredTasks);
 
-        Runnable updateDayNight = () -> {
-            updateTodaySleepPane();
-        };
-        subscriptions = twig.getDayStart().subscribe(updateDayNight).and(subscriptions);
-        subscriptions = twig.getNightStart().subscribe(updateDayNight).and(subscriptions);
+        subscriptions = twig.getDayStart().subscribe(this::updateTodaySleepPane).and(subscriptions);
+        subscriptions = twig.getNightStart().subscribe(this::updateTodaySleepPane).and(subscriptions);
 
         subscriptions = twig.sleepStart().subscribe(this::setSleepStatusLabel).and(subscriptions);
         setSleepStatusLabel(twig.sleepStart().getValue());
@@ -1399,21 +1473,22 @@ public class TaskTwigController {
         routineTable.setItems(twig.routineList());
         subscriptions = subscriptions.and(() -> routineTable.setItems(null));
 
-        MapChangeListener<LocalDate, Journal> journalChangeListener = change -> {
-            journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted(Comparator.reverseOrder()));
-        };
+        MapChangeListener<LocalDate, Journal> journalChangeListener = change ->
+                journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted(Comparator.reverseOrder()));
         twig.journalMap().addListener(journalChangeListener);
         subscriptions = subscriptions.and(() -> twig.journalMap().removeListener(journalChangeListener));
 
         journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted(Comparator.reverseOrder()));
         subscriptions = subscriptions.and(() -> journalListView.setItems(null));
 
-        settingsDayStartSpinner.getValueFactory().setValue(twig.getDayStart().getValue());
-        settingsNightStartSpinner.getValueFactory().setValue(twig.getNightStart().getValue());
+        settingsDayStartInput.setTime(twig.getDayStart().getValue());
+        settingsNightStartInput.setTime(twig.getNightStart().getValue());
         settingsIntervalSpinner.getValueFactory().setValue(twig.syncIntervalProperty().getValue());
 
-        subscriptions = settingsDayStartSpinner.getValueFactory().valueProperty().subscribe(twig::setDayStart).and(subscriptions);
-        subscriptions = settingsNightStartSpinner.getValueFactory().valueProperty().subscribe(twig::setNightStart).and(subscriptions);
+//        subscriptions = settingsDayStartSpinner.getValueFactory().valueProperty().subscribe(twig::setDayStart).and(subscriptions);
+        subscriptions = settingsDayStartInput.timeValueProperty().subscribe(twig::setDayStart).and(subscriptions);
+//        subscriptions = settingsNightStartSpinner.getValueFactory().valueProperty().subscribe(twig::setNightStart).and(subscriptions);
+        subscriptions = settingsNightStartInput.timeValueProperty().subscribe(twig::setNightStart).and(subscriptions);
         subscriptions = settingsIntervalSpinner.getValueFactory().valueProperty().subscribe(twig.syncIntervalProperty()::setValue).and(subscriptions);
 
         backgroundService.restart();
@@ -1437,10 +1512,6 @@ public class TaskTwigController {
 
     public Pane getRoot() {
         return rootPane;
-    }
-
-    public void setApplication(Application application) {
-        this.application = application;
     }
 
     public void setStage(Stage stage) {
@@ -1531,7 +1602,7 @@ public class TaskTwigController {
         return treeItem;
     }
 
-    private void handleListItemChange(ListChangeListener.Change<? extends TwigList.TwigListItem> change, TreeItem<Object> parent) {
+    private void handleListItemChange(ListChangeListener.Change<? extends TwigListItem> change, TreeItem<Object> parent) {
         ObservableList<TreeItem<Object>> treeChildren = parent.getChildren();
         while (change.next()) {
             if (change.wasPermutated()) {
@@ -1641,22 +1712,21 @@ public class TaskTwigController {
     @FXML
     protected void onSleepButtonAction(ActionEvent event) {
         if(!twig.isSleeping()) {
-            TimeDateDialog dialog = new TimeDateDialog(stage, "Bed");
-            Optional<LocalDateTime> timeResult = dialog.showAndWait();
-
-            timeResult.ifPresent(twig::startSleep);
+//            TimeDateDialog dialog = new TimeDateDialog(stage, "Bed");
+//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
+//
+//            timeResult.ifPresent(twig::startSleep);
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Sleeping", "Confirm date and time when you went to bed", twig::startSleep);
+            modalPane.show(modalBox);
         }
         else {
-            TimeDateDialog dialog = new TimeDateDialog(stage, "Wake-Up");
-            Optional<LocalDateTime> timeResult = dialog.showAndWait();
-
-            if(timeResult.isPresent()) {
-                LocalDateTime finishTime = timeResult.get();
-
-                LocalDate lastNight = finishTime.toLocalDate().minusDays(1);
+//            TimeDateDialog dialog = new TimeDateDialog(stage, "Wake-Up");
+//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Sleeping", "Confirm date and time when you got out of bed", datetime -> {
+                LocalDate lastNight = datetime.toLocalDate().minusDays(1);
                 if (twig.sleepRecords().containsKey(lastNight)) {
                     Alert confirmDialog = createAlert(
-                            Alert.AlertType.CONFIRMATION, "Overwrite Sleep Record?",
+                            AlertType.CONFIRMATION, "Overwrite Sleep Record?",
                             "Overwrite Sleep Record?",
                             "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?",
                             ButtonType.YES, ButtonType.NO);
@@ -1667,15 +1737,16 @@ public class TaskTwigController {
                     }
                 }
 
-                twig.finishSleep(finishTime);
-            }
+                twig.finishSleep(datetime);
+            } );
+            modalPane.show(modalBox);
         }
     }
 
     @FXML
     protected void onSleepButtonClick(MouseEvent event) {
         if(twig.isSleeping() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION,
+            Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
                     "Cancel Sleep Record?",
                     "Do you want to cancel this sleep record?",
                     "", ButtonType.YES, ButtonType.NO);
@@ -1703,36 +1774,34 @@ public class TaskTwigController {
     @FXML
     protected void onWorkoutButtonAction(ActionEvent event) {
         if(!twig.isWorkingOut()) {
-            TimeDateDialog dialog = new TimeDateDialog(stage, "Workout");
-            Optional<LocalDateTime> timeResult = dialog.showAndWait();
-
-            timeResult.ifPresent(twig::startWorkout);
+//            TimeDateDialog dialog = new TimeDateDialog(stage, "Workout");
+//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
+//
+//            timeResult.ifPresent(twig::startWorkout);
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Workout", "Confirm date and time for the start of this workout", twig::startWorkout);
+            modalPane.show(modalBox);
         }
         else {
-            TimeDateDialog timeDialog = new TimeDateDialog(stage, "Workout");
-            Optional<LocalDateTime> timeResult = timeDialog.showAndWait();
-
-            if(timeResult.isPresent()) {
-                LocalDateTime finishTime = timeResult.get();
-
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Workout", "Confirm date and time for the end of this workout", datetime -> {
                 SortedMap<Exercise, Integer> exercises;
                 WorkoutDialog workoutDialog = new WorkoutDialog(stage, twig);
                 workoutDialog.showAndWait();
                 exercises = workoutDialog.getResult();
 
                 if (exercises != null) {
-                    twig.finishWorkout(exercises, finishTime);
+                    twig.finishWorkout(exercises, datetime);
 
                     workoutTableView.refresh();
                 }
-            }
+            });
+            modalPane.show(modalBox);
         }
     }
 
     @FXML
     protected void onWorkoutButtonClick(MouseEvent event) {
         if(twig.isWorkingOut() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(Alert.AlertType.CONFIRMATION,
+            Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
                     "Cancel Workout?",
                     "Do you want to cancel this workout?",
                     "", ButtonType.YES, ButtonType.NO);
@@ -1756,6 +1825,8 @@ public class TaskTwigController {
         twig.taskList().add(new Task("", new TaskInterval.NoInterval(), 0));
         taskTreeTable.getSelectionModel().clearSelection();
         taskTreeTable.getSelectionModel().select(taskTreeTable.getRoot().getChildren().getLast());
+
+        taskContent.requestFocus();
     }
 
     private void addSubtask(TreeItem<Task> parent) {
@@ -1764,7 +1835,7 @@ public class TaskTwigController {
         taskTreeTable.getSelectionModel().select(parent.getChildren().getLast());
     }
 
-    private Alert createAlert(Alert.AlertType type, String title, String header, String content, ButtonType... buttons) {
+    private Alert createAlert(AlertType type, String title, String header, String content, ButtonType... buttons) {
         Alert alert = new Alert(type);
         alert.initOwner(stage);
         // alert.getDialogPane().getStylesheets().add(darkStylesheet);
@@ -1787,7 +1858,7 @@ public class TaskTwigController {
     private void updateDbxAccountState() {
         if (twig.dbxClient().getValue() == null) {
             syncButton.setDisable(true);
-            syncLabel.setText("No Dropbox account connected");
+            syncButton.setText("No Dropbox account connected");
 
             settingsDbxName.setText("No active account");
             settingsDbxButton.setText("Connect Account");
@@ -1796,7 +1867,7 @@ public class TaskTwigController {
         }
         else {
             syncButton.setDisable(false);
-            syncLabel.setText("Not yet synced");
+            syncButton.setText("Not yet synced");
             
             settingsDbxButton.setText("Logout");
             settingsDbxButton.getStyleClass().remove(Styles.ACCENT);
@@ -1815,7 +1886,7 @@ public class TaskTwigController {
 
         Dialog<String> dialog = new Dialog<>() {
             {
-                setApplication(application);
+//                setApplication(application);
                 // getDialogPane().getStylesheets().add(darkStylesheet);
                 getDialogPane().getStyleClass().add("confirmation");
                 setHeaderText("Open the following URL and paste the provided code below");
@@ -1852,7 +1923,7 @@ public class TaskTwigController {
                 onDbxButton();
             }
             catch (DbxException e) {
-                createAlert(Alert.AlertType.ERROR,
+                createAlert(AlertType.ERROR,
                         "Authentication Error",
                         "Error Authenticating, code not accepted",
                         "Make sure you've entered the code properly and try again.",
@@ -1873,7 +1944,7 @@ public class TaskTwigController {
             dbxAuthorize();
         }
         else {
-            Alert alert = createAlert(Alert.AlertType.CONFIRMATION,
+            Alert alert = createAlert(AlertType.CONFIRMATION,
                     "Confirm logout?",
                     "Are you sure you want to log out of your Dropbox account?",
                     "", ButtonType.YES, ButtonType.NO);
@@ -1886,11 +1957,11 @@ public class TaskTwigController {
         }
     }
 
-    private TaskTwig.FileAction handleDataConflict() {
+    private FileAction handleDataConflict() {
         ButtonType remoteButton = new ButtonType("Remote", ButtonBar.ButtonData.NO);
         ButtonType localButton = new ButtonType("Local", ButtonBar.ButtonData.YES);
 
-        Alert alert = createAlert(Alert.AlertType.CONFIRMATION,
+        Alert alert = createAlert(AlertType.CONFIRMATION,
                 "Data conflict!",
                 "Conflicting data between local and remote!",
                 "Would you like to keep the local data or the remote (Dropbox) data?",
@@ -1899,14 +1970,14 @@ public class TaskTwigController {
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent()) {
             if (result.get() == remoteButton)
-                return TaskTwig.FileAction.DOWNLOAD;
+                return FileAction.DOWNLOAD;
             else if (result.get() == localButton)
-                return TaskTwig.FileAction.UPLOAD;
+                return FileAction.UPLOAD;
             else
-                return TaskTwig.FileAction.NONE;
+                return FileAction.NONE;
         }
 
-        return TaskTwig.FileAction.NONE;
+        return FileAction.NONE;
     }
 
     private boolean userConfirmSave() {
@@ -1950,10 +2021,11 @@ public class TaskTwigController {
 
         public WeightSpinnerValueFactory() {
             // Modified from SpinnerValueFactory.DoubleSpinnerValueFactory documentation
-            setConverter(new StringConverter<Float>() {
+            setConverter(new StringConverter<>() {
                 private final DecimalFormat df = new DecimalFormat("#.##");
 
-                @Override public String toString(Float value) {
+                @Override
+                public String toString(Float value) {
                     // If the specified value is null, return a zero-length String
                     if (value == null) {
                         return "";
@@ -1962,7 +2034,8 @@ public class TaskTwigController {
                     return df.format(value);
                 }
 
-                @Override public Float fromString(String value) {
+                @Override
+                public Float fromString(String value) {
                     try {
                         // If the specified value is null or zero-length, return null
                         if (value == null) {
@@ -2012,20 +2085,48 @@ public class TaskTwigController {
         private volatile boolean syncOverrideFlag = false;
         private volatile boolean exitPromptFlag = false;
         private volatile boolean exitPromptAsked = false;
-        private final FontIcon loadIcon;
-        private final RotateTransition loadIconAnimation;
+
+        private IconState iconState = IconState.SYNC;
+        private enum IconState {
+            SYNC(FontAwesomeSolid.SYNC),
+            SAVE(FontAwesomeSolid.SAVE),
+            UPLOAD(FontAwesomeSolid.CLOUD_UPLOAD_ALT),
+            DOWNLOAD(FontAwesomeSolid.CLOUD_DOWNLOAD_ALT),
+            DONE(FontAwesomeSolid.CHECK),
+            CONFLICT(FontAwesomeSolid.UNLINK);
+
+            public final FontIcon icon;
+            public final Animation animation;
+
+            private IconState(Ikon icon) {
+                this.icon = new FontIcon(icon);
+
+                switch (this) {
+                    case SYNC -> {
+                        RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), this.icon);
+                        syncIconAnimation.setByAngle(360);
+                        syncIconAnimation.setDelay(Duration.ZERO);
+                        syncIconAnimation.setCycleCount(Animation.INDEFINITE);
+                        syncIconAnimation.setInterpolator(Interpolator.LINEAR);
+                        animation =  syncIconAnimation;
+                    }
+                    case SAVE, UPLOAD, DOWNLOAD -> {
+                        javafx.animation.Timeline bobAnimation = Animations.shakeY(this.icon, 5.0);
+                        bobAnimation.setRate(0.2);
+                        bobAnimation.setCycleCount(Animation.INDEFINITE);
+                        animation = bobAnimation;
+                    }
+                    default -> {
+                        animation = Animations.pulse(this.icon, 1.0);
+                    }
+                }
+            }
+        }
 
         private SaveSyncService(TaskTwigController controller) {
             super();
             this.controller = controller;
             this.twig = controller.twig;
-
-            loadIcon = new FontIcon(FontAwesomeSolid.SYNC);
-            loadIconAnimation = new RotateTransition(Duration.seconds(1), loadIcon);
-            loadIconAnimation.setByAngle(360);
-            loadIconAnimation.setDelay(Duration.ZERO);
-            loadIconAnimation.setCycleCount(Animation.INDEFINITE);
-            loadIconAnimation.setInterpolator(Interpolator.LINEAR);
         }
 
         public void forceSync() {
@@ -2063,6 +2164,7 @@ public class TaskTwigController {
 
                     if (twig.dbxClient().getValue() != null) {
                         updateMessage("Comparing data with Dropbox");
+                        setIconUI(IconState.SYNC, true);
 
                         CommitDiff commitDiff;
                         if (syncToDbx) {
@@ -2089,17 +2191,25 @@ public class TaskTwigController {
                         if (syncToDbx) {
                             String labelText;
                             switch (commitDiff.action()) {
-                                case UPLOAD -> labelText = "Uploading data to Dropbox";
+                                case UPLOAD -> {
+                                    labelText = "Uploading data to Dropbox";
+                                    setIconUI(IconState.UPLOAD, true);
+                                }
                                 case DOWNLOAD -> {
                                     labelText = "Downloading data from Dropbox";
+                                    setIconUI(IconState.DOWNLOAD, true);
                                     CompletableFuture.runAsync(controller::detachTwigData, Platform::runLater).join();
                                 }
-                                case NONE -> labelText = "In sync as of " + LocalTime.now().format(timeFormat);
+                                case NONE -> {
+                                    labelText = "In sync as of " + LocalTime.now().format(timeFormat);
+                                    setIconUI(IconState.DONE, false);
+                                }
                                 default -> labelText = "";
                             }
                             updateMessage(labelText);
                             twig.dbxSync(commitDiff);
 
+                            setIconUI(IconState.DONE, false);
                             String finishSyncText;
                             switch (commitDiff.action()) {
                                 case UPLOAD ->
@@ -2115,10 +2225,22 @@ public class TaskTwigController {
                         }
                         else {
                             String syncCompareText = switch(commitDiff.action()) {
-                                case TaskTwig.FileAction.NONE -> "In sync as of " + LocalTime.now().format(timeFormat);
-                                case TaskTwig.FileAction.UPLOAD -> "Ahead of remote";
-                                case TaskTwig.FileAction.DOWNLOAD -> "Behind remote";
-                                case null -> "local/remote conflict (press sync to resolve)";
+                                case FileAction.NONE -> {
+                                    setIconUI(IconState.DONE, false);
+                                    yield "In sync as of " + LocalTime.now().format(timeFormat);
+                                }
+                                case FileAction.UPLOAD -> {
+                                    setIconUI(IconState.UPLOAD, false);
+                                    yield "Ahead of remote";
+                                }
+                                case FileAction.DOWNLOAD -> {
+                                    setIconUI(IconState.DOWNLOAD, false);
+                                    yield "Behind remote";
+                                }
+                                case null -> {
+                                    setIconUI(IconState.CONFLICT, false);
+                                    yield "local/remote conflict (press sync to resolve)";
+                                }
                             };
 
                             updateMessage(syncCompareText);
@@ -2126,46 +2248,51 @@ public class TaskTwigController {
                     }
                     else {
                         updateMessage("Data saved to file");
+                        setIconUI(IconState.DONE, false);
                     }
 
                     setDoneUI();
                     return null;
                 }
 
-//                @Override
-//                protected void done() {
-//                    setDoneUI();
-//                }
-
                 @Override
                 protected void failed() {
                     System.out.println("Failed task");
                     System.out.println(getException().getMessage());
                     setDoneUI();
-                    Platform.runLater(() -> controller.syncLabel.setText("Sync failed"));
+                    Platform.runLater(() -> controller.syncButton.setText("Sync failed"));
                 }
 
                 @Override
                 protected void cancelled() {
                     System.out.println("Cancelled task");
                     setDoneUI();
-                    Platform.runLater(() -> controller.syncLabel.setText("Sync cancelled"));
+                    Platform.runLater(() -> controller.syncButton.setText("Sync cancelled"));
                 }
 
                 private void setStartUI() {
                     Platform.runLater(() -> {
-                        controller.syncLabel.textProperty().bind(this.messageProperty());
-                        controller.syncLabel.setGraphic(loadIcon);
-                        loadIconAnimation.play();
+                        controller.syncButton.textProperty().bind(this.messageProperty());
                         controller.syncButton.setDisable(true);
+                        setIconUI(IconState.SAVE, true);
+                    });
+                }
+
+                private void setIconUI(IconState icon, boolean playAnimation) {
+                    Platform.runLater(() -> {
+                        iconState.animation.stop();
+                        iconState = icon;
+                        controller.syncButton.setGraphic(icon.icon);
+                        if (playAnimation) {
+                            icon.animation.playFromStart();
+                        }
                     });
                 }
 
                 private void setDoneUI() {
                     Platform.runLater(() -> {
-                        controller.syncLabel.textProperty().unbind();
-                        controller.syncLabel.setGraphic(null);
-                        loadIconAnimation.stop();
+                        controller.syncButton.textProperty().unbind();
+                        iconState.animation.stop();
                         controller.syncButton.setDisable(false);
                     });
                 }

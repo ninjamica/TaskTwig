@@ -1,14 +1,12 @@
 package ninjamica.tasktwig.ui;
 
+import atlantafx.base.theme.Theme;
 import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 import java.io.IOException;
-
-import atlantafx.base.theme.PrimerDark;
 
 public class TaskTwigApplication extends Application {
     private TaskTwigController controller;
@@ -17,12 +15,11 @@ public class TaskTwigApplication extends Application {
 
         // FXMLLoader fxmlLoader = new FXMLLoader(TaskTwigApplication.class.getResource("fxml/main-view.fxml"));
         // Scene scene = new Scene(fxmlLoader.load());
-        controller = new TaskTwigController();
+        controller = new TaskTwigController(this);
         Scene scene = new Scene(controller.getRoot());
         controller.setStage(stage);
-        controller.setApplication(this);
         
-        setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+//        setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
         stage.getIcons().addAll(
           new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-64.png")),
           new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-32.png")),
@@ -38,5 +35,9 @@ public class TaskTwigApplication extends Application {
     public void stop() throws Exception {
 //        controller.closeTwig();
         super.stop();
+    }
+
+    void setTheme(Theme theme) {
+        setUserAgentStylesheet(theme.getUserAgentStylesheet());
     }
 }
