@@ -203,7 +203,7 @@ public class TaskTwigController {
             {
                 setStyle("-fx-background: transparent");
                 checkBox.setFocusTraversable(false);
-                dueText.setStyle("-fx-fill: #a1a1a1");
+                dueText.getStyleClass().add(Styles.TEXT_SUBTLE);
 
                 setOnMouseEntered(event -> {name.setUnderline(true); dueText.setUnderline(true);});
                 setOnMouseExited(event -> {name.setUnderline(false); dueText.setUnderline(false);});
@@ -253,11 +253,12 @@ public class TaskTwigController {
                 checkBox.setSelected(done);
 
                 if (done) {
-                    name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+                    if (! name.getStyleClass().contains(Styles.TEXT_STRIKETHROUGH))
+                        name.getStyleClass().addAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
                     pane.getChildren().remove(dueText);
                 }
                 else {
-                    name.setStyle("-fx-fill: lightgray");
+                    name.getStyleClass().removeAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
                     if (!pane.getChildren().contains(dueText))
                         pane.getChildren().add(dueText);
                 }
@@ -1374,7 +1375,7 @@ public class TaskTwigController {
             new FontIcon(FontAwesomeSolid.PAINT_BRUSH)
         );
         ChoiceBox<Theme> settingsThemeChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(themes));
-        settingsThemeChoiceBox.setConverter(new StringConverter<>() {
+        settingsThemeChoiceBox.setConverter(new StringConverter<Theme>() {
             @Override
             public String toString(Theme object) {
                 return object != null ? object.getName() : "";
@@ -1395,7 +1396,12 @@ public class TaskTwigController {
             application.setTheme(theme);
             twig.setVisualTheme(theme.getName());
         });
-        settingsThemeChoiceBox.setValue(settingsThemeChoiceBox.getConverter().fromString(twig.getVisualTheme()));
+
+        Theme currentTheme = settingsThemeChoiceBox.getConverter().fromString(twig.getVisualTheme());
+        if (currentTheme == null)
+            settingsThemeChoiceBox.getSelectionModel().selectFirst();
+        else
+            settingsThemeChoiceBox.setValue(currentTheme);
         themeTile.setAction(settingsThemeChoiceBox);
         themeTile.setActionHandler(settingsThemeChoiceBox::show);
 
@@ -2096,28 +2102,39 @@ public class TaskTwigController {
             CONFLICT(FontAwesomeSolid.UNLINK);
 
             public final FontIcon icon;
-            public final Animation animation;
+            private Animation animation;
+
+            public void startAnimation() {
+                animation.playFromStart();
+            }
+
+            public void stopAnimation() {
+                animation.stop();
+            }
 
             private IconState(Ikon icon) {
                 this.icon = new FontIcon(icon);
+            }
 
-                switch (this) {
+            static {
+                for (IconState iconState : IconState.values())
+                switch (iconState) {
                     case SYNC -> {
-                        RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), this.icon);
+                        RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), iconState.icon);
                         syncIconAnimation.setByAngle(360);
                         syncIconAnimation.setDelay(Duration.ZERO);
                         syncIconAnimation.setCycleCount(Animation.INDEFINITE);
                         syncIconAnimation.setInterpolator(Interpolator.LINEAR);
-                        animation =  syncIconAnimation;
+                        iconState.animation =  syncIconAnimation;
                     }
                     case SAVE, UPLOAD, DOWNLOAD -> {
-                        javafx.animation.Timeline bobAnimation = Animations.shakeY(this.icon, 5.0);
+                        javafx.animation.Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
                         bobAnimation.setRate(0.2);
                         bobAnimation.setCycleCount(Animation.INDEFINITE);
-                        animation = bobAnimation;
+                        iconState.animation = bobAnimation;
                     }
                     default -> {
-                        animation = Animations.pulse(this.icon, 1.0);
+                        iconState.animation = Animations.pulse(iconState.icon, 1.0);
                     }
                 }
             }
@@ -2280,11 +2297,11 @@ public class TaskTwigController {
 
                 private void setIconUI(IconState icon, boolean playAnimation) {
                     Platform.runLater(() -> {
-                        iconState.animation.stop();
+                        iconState.stopAnimation();
                         iconState = icon;
                         controller.syncButton.setGraphic(icon.icon);
                         if (playAnimation) {
-                            icon.animation.playFromStart();
+                            icon.startAnimation();
                         }
                     });
                 }
@@ -2292,7 +2309,7 @@ public class TaskTwigController {
                 private void setDoneUI() {
                     Platform.runLater(() -> {
                         controller.syncButton.textProperty().unbind();
-                        iconState.animation.stop();
+                        iconState.stopAnimation();
                         controller.syncButton.setDisable(false);
                     });
                 }
