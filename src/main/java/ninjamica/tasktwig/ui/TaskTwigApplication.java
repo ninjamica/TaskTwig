@@ -5,21 +5,16 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Stage;
-
-import java.io.IOException;
+import org.jetbrains.annotations.NotNull;
 
 public class TaskTwigApplication extends Application {
-    private TaskTwigController controller;
     @Override
-    public void start(Stage stage) throws IOException {
+    public void start(Stage stage) {
 
-        // FXMLLoader fxmlLoader = new FXMLLoader(TaskTwigApplication.class.getResource("fxml/main-view.fxml"));
-        // Scene scene = new Scene(fxmlLoader.load());
-        controller = new TaskTwigController(this);
+        TaskTwigController controller = new TaskTwigController(this);
         Scene scene = new Scene(controller.getRoot());
         controller.setStage(stage);
-        
-//        setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+
         stage.getIcons().addAll(
           new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-64.png")),
           new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-32.png")),
@@ -31,13 +26,7 @@ public class TaskTwigApplication extends Application {
         stage.show();
     }
 
-    @Override
-    public void stop() throws Exception {
-//        controller.closeTwig();
-        super.stop();
-    }
-
-    void setTheme(Theme theme) {
+    void setTheme(@NotNull Theme theme) {
         setUserAgentStylesheet(theme.getUserAgentStylesheet());
     }
 }

@@ -8,6 +8,7 @@ import atlantafx.base.util.SimpleMaskChar;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.scene.Cursor;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
@@ -67,7 +68,7 @@ public class TimeInput extends CustomTextField {
                 }
                 else {
                     try {
-                        if (acceptsNull && text.equals("__:__ _M"))
+                        if (acceptsNull && text.equals("__:__ _M") || text.equals(" _:__ _M"))
                             timeValue.set(null);
                         else
                             timeValue.set(LocalTime.parse(text.trim(), timeFormat));
@@ -122,7 +123,10 @@ public class TimeInput extends CustomTextField {
             }
         });
 
-        setRight(new FontIcon(FontAwesomeSolid.CLOCK));
+        var clockIcon = new FontIcon(FontAwesomeSolid.CLOCK);
+        clockIcon.setCursor(Cursor.HAND);
+        clockIcon.setOnMouseClicked(event -> setTime(LocalTime.now()));
+        setRight(clockIcon);
         setPrefWidth(110);
         setMinWidth(USE_PREF_SIZE);
     }

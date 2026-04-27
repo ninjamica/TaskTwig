@@ -50,20 +50,11 @@ public class TaskContent extends VBox {
     private TimeInput dueTimeInput;
 
     private final static ObservableList<String> types = FXCollections.observableArrayList("No Due Date", "Single Date", "Day Interval", "Week Interval", "Month Interval");
-    private Subscription subscription = Subscription.EMPTY;
+    private Subscription subscriptions = Subscription.EMPTY;
     private Subscription typeSubs =  Subscription.EMPTY;
     Task task;
 
     public TaskContent() {
-//        try {
-//            FXMLLoader loader = new FXMLLoader();
-//            loader.setLocation(getClass().getResource("fxml/task-dialog.fxml"));
-//            loader.setController(this);
-//            getChildren().add(loader.load());
-//        }
-//        catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
         initializeUI();
         updateType(null, null, false);
     }
@@ -157,22 +148,22 @@ public class TaskContent extends VBox {
         dueTimeCard.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
         dueTimeCard.setHeader(new Label("Due Time:"));
         dueTimeCard.setFocusTraversable(false);
-        dueTimeInput = new TimeInput(null, true);
+        dueTimeInput = new TimeInput();
         dueTimeInput.setMaxWidth(110);
         dueTimeCard.setBody(dueTimeInput);
     }
 
     public void setTask(Task task) {
         this.task = task;
-        subscription.unsubscribe();
-        subscription = Subscription.EMPTY;
+        subscriptions.unsubscribe();
+        subscriptions = Subscription.EMPTY;
 
         if (task != null) {
             nameTextField.textProperty().bindBidirectional(task.nameProperty());
             var taskPriority = task.priorityProperty().asObject();
             prioritySpinner.getValueFactory().valueProperty().bindBidirectional(taskPriority);
             dueTimeInput.timeValueProperty().bindBidirectional(task.dueTimeProperty());
-            subscription = Subscription.combine(
+            subscriptions = Subscription.combine(
                     () -> nameTextField.textProperty().unbindBidirectional(task.nameProperty()),
                     () -> prioritySpinner.getValueFactory().valueProperty().unbindBidirectional(taskPriority),
                     () -> dueTimeInput.timeValueProperty().unbindBidirectional(task.dueTimeProperty())
@@ -187,9 +178,8 @@ public class TaskContent extends VBox {
                 default -> null;
             };
             repeatChoiceBox.setValue(taskType);
-            subscription = repeatChoiceBox.getSelectionModel().selectedItemProperty().subscribe((oldItem, newItem) -> updateType(oldItem, newItem, true)).and(subscription);
+            subscriptions = repeatChoiceBox.getSelectionModel().selectedItemProperty().subscribe((oldItem, newItem) -> updateType(oldItem, newItem, true)).and(subscriptions);
             updateType(null, taskType, false);
-
         }
         else {
             updateType(null, null, false);

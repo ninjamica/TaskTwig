@@ -26,8 +26,8 @@ import java.util.TreeMap;
 public class WorkoutDialog extends Dialog<SortedMap<Exercise, Integer>> {
 
     protected static class ExerciseHolder {
-        protected SimpleIntegerProperty count;
-        protected Exercise exercise;
+        protected final SimpleIntegerProperty count;
+        protected final Exercise exercise;
 
         ExerciseHolder(Exercise exercise, int count) {
             this.count = new SimpleIntegerProperty(count);

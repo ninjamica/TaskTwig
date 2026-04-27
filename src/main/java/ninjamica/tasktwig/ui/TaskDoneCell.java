@@ -45,15 +45,9 @@ public class TaskDoneCell extends TableCell<Task, Boolean> {
 
         if (this.getItem()) {
             setGraphic(new ImageView(doneIcon));
-//            getTableRow().setStyle("-fx-background-color: dimgray");
-//            getTableRow().setFont(Font.);
-//            getTableView().refresh();
-//            getTableRow().setDisable(true);
         }
         else {
             setGraphic(new ImageView(todoIcon));
-//            getTableRow().setStyle("-fx-background-color: white");
-//            getTableRow().setDisable(false);
         }
     }
 }

@@ -22,7 +22,6 @@ import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
 import javafx.event.EventHandler;
-import javafx.fxml.FXML;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -173,7 +172,7 @@ public class TaskTwigController {
 
     private ToolBar initToolBar() {
         syncButton = new Button();
-        syncButton.getStyleClass().addAll(Styles.BUTTON_OUTLINED, Styles.ACCENT);
+        syncButton.getStyleClass().addAll(Styles.FLAT);
         syncButton.setOnAction(this::onSyncButton);
         return new ToolBar(syncButton);
     }
@@ -268,7 +267,7 @@ public class TaskTwigController {
         Card routineCard = new Card();
         routineCard.setHeader(routineLabelBox);
         routineCard.setBody(todayRoutineListView);
-        routineCard.getStyleClass().addAll(Styles.WARNING);
+        routineCard.getStyleClass().addAll(Styles.ELEVATED_2);
         todayGridPane.add(routineCard, 0, 0, 1, 2);
         GridPane.setHgrow(routineCard, Priority.ALWAYS);
         GridPane.setVgrow(routineCard, Priority.ALWAYS);
@@ -379,7 +378,7 @@ public class TaskTwigController {
         Card taskCard = new Card();
         taskCard.setHeader(taskLabelBox);
         taskCard.setBody(todayTaskTreeView);
-        taskCard.getStyleClass().add(Styles.ELEVATED_1);
+        taskCard.getStyleClass().add(Styles.ELEVATED_2);
         todayGridPane.add(taskCard, 1, 0, 1, 2);
         GridPane.setHgrow(taskCard, Priority.ALWAYS);
         GridPane.setVgrow(taskCard, Priority.ALWAYS);
@@ -389,7 +388,7 @@ public class TaskTwigController {
         todayJournalTextArea.setPromptText("Type journal here...");
         todayJournalTextArea.setWrapText(true);
         todayJournalTextArea.setPrefWidth(150);
-        todayJournalTextArea.getStyleClass().add(Styles.ELEVATED_1);
+        todayJournalTextArea.getStyleClass().add(Styles.ELEVATED_2);
         todayGridPane.add(todayJournalTextArea, 2, 1);
         GridPane.setHgrow(todayJournalTextArea, Priority.NEVER);
         GridPane.setVgrow(todayJournalTextArea, Priority.ALWAYS);
@@ -400,7 +399,7 @@ public class TaskTwigController {
         GridPane.setHgrow(othersGridPane, Priority.NEVER);
         Card othersCard = new Card();
         othersCard.setBody(othersGridPane);
-        othersCard.getStyleClass().add(Styles.ELEVATED_1);
+        othersCard.getStyleClass().add(Styles.ELEVATED_2);
         todayGridPane.add(othersCard, 2, 0, 1, 1);
 
         Label sleepLabel = new Label("Sleep:", new FontIcon(FontAwesomeSolid.BED));
@@ -1375,7 +1374,7 @@ public class TaskTwigController {
             new FontIcon(FontAwesomeSolid.PAINT_BRUSH)
         );
         ChoiceBox<Theme> settingsThemeChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(themes));
-        settingsThemeChoiceBox.setConverter(new StringConverter<Theme>() {
+        settingsThemeChoiceBox.setConverter(new StringConverter<>() {
             @Override
             public String toString(Theme object) {
                 return object != null ? object.getName() : "";
@@ -1464,15 +1463,6 @@ public class TaskTwigController {
         workoutTableView.setItems(twig.workoutRecords());
         subscriptions = subscriptions.and(() -> workoutTableView.setItems(null));
 
-//        taskTableView.setItems(twig.taskList().sorted((task1, task2) -> {
-//            if (task1.isDone() ^ task2.isDone()) {
-//                return task1.isDone() ? 1 : -1;
-//            }
-//            else {
-//                return task1.getName().compareTo(task2.getName());
-//            }
-//        }));
-
         populateTaskTree(taskTreeTable.getRoot(), twig.taskList());
         populateTwigLists();
 
@@ -1506,14 +1496,6 @@ public class TaskTwigController {
 
         if (backgroundService.getState() != Worker.State.RUNNING)
             backgroundService.cancel();
-//        else {
-//            backgroundService.setOnScheduled(event -> {
-//                backgroundService.cancel();
-//                backgroundService.setOnScheduled(null);
-//            });
-//        }
-
-//        backgroundThread.interrupt();
     }
 
     public Pane getRoot() {
@@ -1715,19 +1697,12 @@ public class TaskTwigController {
         updateTodaySleepPane();
     }
 
-    @FXML
     protected void onSleepButtonAction(ActionEvent event) {
         if(!twig.isSleeping()) {
-//            TimeDateDialog dialog = new TimeDateDialog(stage, "Bed");
-//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
-//
-//            timeResult.ifPresent(twig::startSleep);
             TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Sleeping", "Confirm date and time when you went to bed", twig::startSleep);
             modalPane.show(modalBox);
         }
         else {
-//            TimeDateDialog dialog = new TimeDateDialog(stage, "Wake-Up");
-//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
             TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Sleeping", "Confirm date and time when you got out of bed", datetime -> {
                 LocalDate lastNight = datetime.toLocalDate().minusDays(1);
                 if (twig.sleepRecords().containsKey(lastNight)) {
@@ -1749,7 +1724,6 @@ public class TaskTwigController {
         }
     }
 
-    @FXML
     protected void onSleepButtonClick(MouseEvent event) {
         if(twig.isSleeping() && event.getButton() == MouseButton.SECONDARY) {
             Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
@@ -1777,13 +1751,8 @@ public class TaskTwigController {
         }
     }
 
-    @FXML
     protected void onWorkoutButtonAction(ActionEvent event) {
         if(!twig.isWorkingOut()) {
-//            TimeDateDialog dialog = new TimeDateDialog(stage, "Workout");
-//            Optional<LocalDateTime> timeResult = dialog.showAndWait();
-//
-//            timeResult.ifPresent(twig::startWorkout);
             TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Workout", "Confirm date and time for the start of this workout", twig::startWorkout);
             modalPane.show(modalBox);
         }
@@ -1804,7 +1773,6 @@ public class TaskTwigController {
         }
     }
 
-    @FXML
     protected void onWorkoutButtonClick(MouseEvent event) {
         if(twig.isWorkingOut() && event.getButton() == MouseButton.SECONDARY) {
             Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
@@ -1819,14 +1787,12 @@ public class TaskTwigController {
         }
     }
 
-    @FXML
     protected void addExerciseButtonClick(ActionEvent event) {
         ExerciseDialog dialog = new ExerciseDialog(stage, twig.getExerciseList());
         Optional<List<Exercise>> exerciseResult = dialog.showAndWait();
         exerciseResult.ifPresent(exerciseList -> twig.exerciseList().setAll(exerciseList));
     }
 
-    @FXML
     protected void onNewTaskButtonClick(ActionEvent event) {
         twig.taskList().add(new Task("", new TaskInterval.NoInterval(), 0));
         taskTreeTable.getSelectionModel().clearSelection();
@@ -1853,7 +1819,6 @@ public class TaskTwigController {
         return alert;
     }
 
-    @FXML
     protected void createRoutine(ActionEvent event) {
         Routine newRoutine = new Routine("", null, new RoutineInterval.DailyInterval());
         twig.routineList().add(newRoutine);
@@ -1892,8 +1857,6 @@ public class TaskTwigController {
 
         Dialog<String> dialog = new Dialog<>() {
             {
-//                setApplication(application);
-                // getDialogPane().getStylesheets().add(darkStylesheet);
                 getDialogPane().getStyleClass().add("confirmation");
                 setHeaderText("Open the following URL and paste the provided code below");
 
@@ -2112,29 +2075,28 @@ public class TaskTwigController {
                 animation.stop();
             }
 
-            private IconState(Ikon icon) {
+            IconState(Ikon icon) {
                 this.icon = new FontIcon(icon);
             }
 
             static {
-                for (IconState iconState : IconState.values())
-                switch (iconState) {
-                    case SYNC -> {
-                        RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), iconState.icon);
-                        syncIconAnimation.setByAngle(360);
-                        syncIconAnimation.setDelay(Duration.ZERO);
-                        syncIconAnimation.setCycleCount(Animation.INDEFINITE);
-                        syncIconAnimation.setInterpolator(Interpolator.LINEAR);
-                        iconState.animation =  syncIconAnimation;
-                    }
-                    case SAVE, UPLOAD, DOWNLOAD -> {
-                        javafx.animation.Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
-                        bobAnimation.setRate(0.2);
-                        bobAnimation.setCycleCount(Animation.INDEFINITE);
-                        iconState.animation = bobAnimation;
-                    }
-                    default -> {
-                        iconState.animation = Animations.pulse(iconState.icon, 1.0);
+                for (IconState iconState : IconState.values()) {
+                    switch (iconState) {
+                        case SYNC -> {
+                            RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), iconState.icon);
+                            syncIconAnimation.setByAngle(360);
+                            syncIconAnimation.setDelay(Duration.ZERO);
+                            syncIconAnimation.setCycleCount(Animation.INDEFINITE);
+                            syncIconAnimation.setInterpolator(Interpolator.LINEAR);
+                            iconState.animation = syncIconAnimation;
+                        }
+                        case SAVE, UPLOAD, DOWNLOAD -> {
+                            javafx.animation.Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
+                            bobAnimation.setRate(0.2);
+                            bobAnimation.setCycleCount(Animation.INDEFINITE);
+                            iconState.animation = bobAnimation;
+                        }
+                        default -> iconState.animation = Animations.pulse(iconState.icon, 1.0);
                     }
                 }
             }
@@ -2171,7 +2133,7 @@ public class TaskTwigController {
 
             return new javafx.concurrent.Task<>() {
                 @Override
-                protected Void call() throws Exception {
+                protected Void call() {
                     setStartUI();
 
                     boolean syncToDbx = forceSync || CompletableFuture.supplyAsync(twig.autoSyncProperty()::get, Platform::runLater).join();

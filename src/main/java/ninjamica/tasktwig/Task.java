@@ -198,16 +198,6 @@ public class Task {
         return getInterval().inProgress();
     }
 
-    public static String getPriorityColor(int priority) {
-        return switch(priority) {
-            case 1 -> "#84a5ed";
-            case 2 -> "lightgreen";
-            case 3 -> "gold";
-            case 4 -> "coral";
-            default -> "#b0b0b0";
-        };
-    }
-
     public static String priorityStyleClass(int priority) {
         return switch (priority) {
             case 1 -> Styles.ACCENT;

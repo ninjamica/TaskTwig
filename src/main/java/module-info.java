@@ -8,9 +8,7 @@ module ninjamica.tasktwig.tasktwig {
 
     requires transitive javafx.base;
     requires transitive javafx.graphics;
-    requires java.xml;
     requires transitive dropbox.core.sdk;
-    requires java.desktop;
     requires jdk.jdi;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.fontawesome6;

@@ -11,7 +11,6 @@ import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -30,7 +29,6 @@ public record Routine(StringProperty name, ObjectProperty<LocalTime> dueTime, Ob
         String name;
         LocalTime dueTime;
         RoutineInterval interval;
-        LocalDate lastDone;
         switch (version) {
             case 2,3 -> {
                 name = node.get("name").asString();
