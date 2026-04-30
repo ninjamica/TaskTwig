@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.*;
 import javafx.beans.property.ObjectProperty;
@@ -62,7 +62,7 @@ public record Journal(StringProperty text,
                 break;
 
             default:
-                throw new TaskTwig.JsonVersionException("Unsupported Journal version: " + version);
+                throw new TaskTwig.TwigJsonVersionException("Unsupported Journal version: " + version);
         }
 
         this(text, weight, routines, tasks);
@@ -98,6 +98,7 @@ public record Journal(StringProperty text,
             return completedRoutines;
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean isEmpty() {
         return text.isEmpty().and(weight.isNull()).get() && completedRoutines.isEmpty() && completedTasks().isEmpty();
     }

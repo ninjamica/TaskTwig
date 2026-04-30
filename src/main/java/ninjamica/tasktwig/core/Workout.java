@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -41,7 +41,7 @@ public record Workout(@JsonGetter("start") LocalDateTime start,
             }
         }
         else {
-            throw new TaskTwig.JsonVersionException("Unsupported Workout version: " + version);
+            throw new TaskTwig.TwigJsonVersionException("Unsupported Workout version: " + version);
         }
 
         this(start, end, exercises);

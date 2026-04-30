@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -73,7 +73,7 @@ public record TwigList(StringProperty name, ObservableList<TwigListItem> items, 
             expanded = node.get("expanded").asBoolean();
         }
         else {
-            throw new TaskTwig.JsonVersionException("Unsupported List version: " + version);
+            throw new TaskTwig.TwigJsonVersionException("Unsupported List version: " + version);
         }
 
         this(name, items, expanded);

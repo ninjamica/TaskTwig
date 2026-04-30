@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.dropbox.core.*;
 import com.dropbox.core.json.JsonReader;
@@ -30,24 +30,21 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+@SuppressWarnings({"OctalInteger", "ResultOfMethodCallIgnored"})
 public class TaskTwig implements Serializable {
 
-    static class JsonAssertException extends RuntimeException {
-        public JsonAssertException(String message) {
+    static class TwigJsonAssertException extends RuntimeException {
+        public TwigJsonAssertException(String message) {
             super(message);
         }
     }
-    static class JsonVersionException extends JsonAssertException {
-        public JsonVersionException(String message) {
+    static class TwigJsonVersionException extends TwigJsonAssertException {
+        public TwigJsonVersionException(String message) {
             super(message);
         }
-    }
-
-    @FunctionalInterface
-    interface TwigJsonConstructor<T> {
-        T construct(JsonNode node, int version);
     }
 
     private static final String DBX_API_KEY = "ul8ujplgavm586q";
@@ -228,16 +225,8 @@ public class TaskTwig implements Serializable {
         this.visualTheme.set(visualTheme);
     }
 
-    public void startSleep() {
-        this.startSleep(LocalDateTime.now());
-    }
-
     public void startSleep(LocalDateTime sleepStart) {
         this.sleepStart.setValue(sleepStart);
-    }
-
-    public void finishSleep() {
-        this.finishSleep(LocalDateTime.now());
     }
 
     public void finishSleep(LocalDateTime finishTime) {
@@ -278,10 +267,6 @@ public class TaskTwig implements Serializable {
         return workoutStart;
     }
 
-    public void finishWorkout(SortedMap<Exercise, Integer> exercises) {
-        this.finishWorkout(exercises, LocalDateTime.now());
-    }
-
     public ObservableList<Workout> workoutRecords() {
         return workoutRecords;
     }
@@ -290,24 +275,8 @@ public class TaskTwig implements Serializable {
         return new ArrayList<>(exerciseList);
     }
 
-    public void addExercise(String name, Exercise.ExerciseUnit unit) {
-        exerciseList.add(new Exercise(name, unit));
-    }
-
     public ObservableList<Exercise> exerciseList() {
         return exerciseList;
-    }
-
-    public Sleep getSleepRecord(LocalDate date) {
-        return sleepRecords.get(date);
-    }
-
-    public void addTask(Task task) {
-        taskList.add(task);
-    }
-
-    public void finishTask(int index) {
-        taskList.get(index).setDone(true);
     }
 
     public ObservableList<Task> taskList() {
@@ -418,7 +387,7 @@ public class TaskTwig implements Serializable {
                     else
                         lastSyncedHash = null;
                 }
-                default -> throw new JsonVersionException("Unsupported config file version: " + version);
+                default -> throw new TwigJsonVersionException("Unsupported config file version: " + version);
             }
         }
         catch (JacksonIOException e) {
@@ -467,7 +436,7 @@ public class TaskTwig implements Serializable {
             parser.nextToken();
             parseJsonMap(sleepMap, parser, LocalDate::parse, Sleep::new, version);
         }
-        catch (JsonAssertException | JacksonIOException e) {
+        catch (TwigJsonAssertException | JacksonIOException e) {
             this.sleepStart.setValue(null);
             sleepMap.clear();
         }
@@ -498,7 +467,7 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "workoutRecords");
             parser.nextToken();
             parseJsonList(this.workoutRecords, parser, Workout::new, version);
-        } catch (JsonAssertException | JacksonIOException e) {
+        } catch (TwigJsonAssertException | JacksonIOException e) {
             this.exerciseList.clear();
             this.workoutStart.setValue(null);
             this.workoutRecords.clear();
@@ -514,7 +483,7 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "tasks");
             parser.nextToken();
             parseJsonList(this.taskList, parser, Task::new, version);
-        } catch (JsonAssertException | JacksonIOException e) {
+        } catch (TwigJsonAssertException | JacksonIOException e) {
             this.taskList.clear();
         }
 
@@ -528,7 +497,7 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "lists");
             parser.nextToken();
             parseJsonList(this.twigLists, parser, TwigList::new, version);
-        } catch (JsonAssertException | JacksonIOException e) {
+        } catch (TwigJsonAssertException | JacksonIOException e) {
             this.twigLists.clear();
         }
 
@@ -542,7 +511,7 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "routines");
             parser.nextToken();
             parseJsonList(this.routineList, parser, Routine::new, version);
-        } catch (JsonAssertException | JacksonIOException e) {
+        } catch (TwigJsonAssertException | JacksonIOException e) {
             this.routineList.clear();
         }
 
@@ -556,7 +525,7 @@ public class TaskTwig implements Serializable {
             assertEqual(parser.nextName(), "journals");
             parser.nextToken();
             parseJsonMap(journals, parser, LocalDate::parse, Journal::new, version);
-        } catch (JsonAssertException | JacksonIOException e) {
+        } catch (TwigJsonAssertException | JacksonIOException e) {
             journals.clear();
         }
         this.journalMap = FXCollections.observableMap(journals);
@@ -686,28 +655,28 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private void assertEqual(Object actual, Object expected) throws JsonAssertException {
+    private void assertEqual(Object actual, Object expected) throws TwigJsonAssertException {
         if (!expected.equals(actual))
-            throw new JsonAssertException("JSON parse encountered unexpected value. Expected: " + expected + ", actual: " + actual);
+            throw new TwigJsonAssertException("JSON parse encountered unexpected value. Expected: " + expected + ", actual: " + actual);
     }
 
-    private <T> void parseJsonList(List<T> list, JsonParser parser, TwigJsonConstructor<T> callback, int version) {
+    private <T> void parseJsonList(List<T> list, JsonParser parser, BiFunction<JsonNode, Integer, T> callback, int version) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_ARRAY) {
             JsonNode node = parser.readValueAsTree();
-            T value = callback.construct(node, version);
+            T value = callback.apply(node, version);
             list.add(value);
             parser.nextToken();
         }
     }
 
-    private <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser, Callback<String, K> keyCallback, TwigJsonConstructor<V> valueCallback, int version) {
+    private <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser, Callback<String, K> keyCallback, BiFunction<JsonNode, Integer, V> valueCallback, int version) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_OBJECT) {
             K key = keyCallback.call(parser.currentName());
             parser.nextToken();
             JsonNode node = parser.readValueAsTree();
-            V value = valueCallback.construct(node, version);
+            V value = valueCallback.apply(node, version);
             map.put(key, value);
             parser.nextToken();
         }
@@ -729,7 +698,7 @@ public class TaskTwig implements Serializable {
 
             return files;
         }
-        catch (JsonAssertException | JacksonException e) {
+        catch (TwigJsonAssertException | JacksonException e) {
             System.out.println("Failed reading parse data: " + e.getMessage());
             System.out.println("Skipped reading parse data");
 
@@ -846,6 +815,7 @@ public class TaskTwig implements Serializable {
         }
     }
 
+    @SuppressWarnings("UnusedReturnValue")
     public boolean authDbxFromFile() {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
 
@@ -958,7 +928,7 @@ public class TaskTwig implements Serializable {
         try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
             return readCommitData(parser);
         }
-        catch (JacksonIOException | JsonAssertException e) {
+        catch (JacksonIOException | TwigJsonAssertException e) {
             System.out.println("Couldn't read local commit file: " + e.getMessage());
             return null;
         }
@@ -970,7 +940,7 @@ public class TaskTwig implements Serializable {
         {
             return readCommitData(parser);
         }
-        catch (DbxException | JsonAssertException e) {
+        catch (DbxException | TwigJsonAssertException e) {
             System.out.println("Couldn't read remote commit file: " + e.getMessage());
             return null;
         }
@@ -1004,7 +974,7 @@ public class TaskTwig implements Serializable {
                 fileAction = FileAction.DOWNLOAD;
             } else {
                 if (conflictCallback != null) {
-                    fileAction = CompletableFuture.supplyAsync(conflictCallback, Platform::runLater).join();
+                    fileAction = conflictCallback.get();
                     System.out.println("User chose " + fileAction);
                 } else {
                     return new CommitDiff(null, filesToSync, localCommit, remoteCommit);

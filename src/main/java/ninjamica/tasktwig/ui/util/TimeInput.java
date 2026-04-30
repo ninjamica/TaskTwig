@@ -1,4 +1,4 @@
-package ninjamica.tasktwig.ui;
+package ninjamica.tasktwig.ui.util;
 
 import atlantafx.base.controls.CustomTextField;
 import atlantafx.base.theme.Styles;
@@ -46,7 +46,7 @@ public class TimeInput extends CustomTextField {
     }
 
     private final ObjectProperty<LocalTime> timeValue = new SimpleObjectProperty<>();
-    private final boolean acceptsNull;
+    public final boolean acceptsNull;
 
 
     public TimeInput() {
@@ -141,10 +141,6 @@ public class TimeInput extends CustomTextField {
 
     public ObjectProperty<LocalTime> timeValueProperty() {
         return timeValue;
-    }
-
-    public boolean acceptsNull() {
-        return acceptsNull;
     }
 
     private void increment() {

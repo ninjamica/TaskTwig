@@ -1,4 +1,4 @@
-package ninjamica.tasktwig.ui;
+package ninjamica.tasktwig.ui.util;
 
 import javafx.event.ActionEvent;
 import javafx.scene.control.CheckBox;

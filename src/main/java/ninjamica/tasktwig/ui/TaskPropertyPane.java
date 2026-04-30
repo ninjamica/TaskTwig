@@ -12,15 +12,16 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.TextAlignment;
 import javafx.util.Subscription;
-import ninjamica.tasktwig.Task;
-import ninjamica.tasktwig.TaskInterval.*;
-import ninjamica.tasktwig.TaskTwig;
+import ninjamica.tasktwig.core.Task;
+import ninjamica.tasktwig.core.TaskInterval.*;
+import ninjamica.tasktwig.core.TaskTwig;
+import ninjamica.tasktwig.ui.util.TimeInput;
 
 import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TaskContent extends VBox {
+public class TaskPropertyPane extends VBox {
     private Label blankLabel;
     private Card nameCard;
     private Card priorityCard;
@@ -54,14 +55,9 @@ public class TaskContent extends VBox {
     private Subscription typeSubs =  Subscription.EMPTY;
     Task task;
 
-    public TaskContent() {
+    public TaskPropertyPane() {
         initializeUI();
         updateType(null, null, false);
-    }
-
-    public TaskContent(Task task) {
-        this();
-        setTask(task);
     }
 
     private void initializeUI() {
@@ -175,7 +171,6 @@ public class TaskContent extends VBox {
                 case DayInterval day -> "Day Interval";
                 case WeekInterval week -> "Week Interval";
                 case MonthInterval month -> "Month Interval";
-                default -> null;
             };
             repeatChoiceBox.setValue(taskType);
             subscriptions = repeatChoiceBox.getSelectionModel().selectedItemProperty().subscribe((oldItem, newItem) -> updateType(oldItem, newItem, true)).and(subscriptions);

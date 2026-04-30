@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -29,7 +29,7 @@ public record Sleep(@JsonGetter("start") LocalDateTime start, @JsonGetter("end")
             end = LocalDateTime.parse(node.get("end").asString());
         }
         else {
-            throw new TaskTwig.JsonVersionException("Unsupported Sleep version: " + version);
+            throw new TaskTwig.TwigJsonVersionException("Unsupported Sleep version: " + version);
         }
 
         this(start, end);

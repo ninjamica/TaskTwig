@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import atlantafx.base.theme.Styles;
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -99,7 +99,7 @@ public class Task {
                 break;
 
             default:
-                throw new TaskTwig.JsonVersionException("Unsupported Task version: " + version);
+                throw new TaskTwig.TwigJsonVersionException("Unsupported Task version: " + version);
         }
 
         this(name, interval, dueTime, priority, children, expanded);

@@ -1,6 +1,5 @@
 module ninjamica.tasktwig.tasktwig {
     requires javafx.controls;
-    requires javafx.fxml;
     requires transitive tools.jackson.databind;
     requires org.jetbrains.annotations;
     requires transitive org.controlsfx.controls;
@@ -9,13 +8,14 @@ module ninjamica.tasktwig.tasktwig {
     requires transitive javafx.base;
     requires transitive javafx.graphics;
     requires transitive dropbox.core.sdk;
-    requires jdk.jdi;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.fontawesome6;
 
 
-    opens ninjamica.tasktwig to javafx.fxml;
-    exports ninjamica.tasktwig;
-    exports ninjamica.tasktwig.ui;
     opens ninjamica.tasktwig.ui to javafx.fxml;
+    opens ninjamica.tasktwig.ui.util to javafx.fxml;
+    opens ninjamica.tasktwig.core to javafx.fxml;
+    exports ninjamica.tasktwig.core;
+    exports ninjamica.tasktwig.ui;
+    exports ninjamica.tasktwig.ui.util;
 }

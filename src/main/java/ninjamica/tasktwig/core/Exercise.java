@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import org.jetbrains.annotations.NotNull;
 import tools.jackson.databind.JsonNode;
@@ -25,7 +25,7 @@ public record Exercise(String name, ExerciseUnit unit) implements Comparable<Exe
         this(split[1], ExerciseUnit.valueOf(split[3]));
     }
 
-    public Exercise(JsonNode node, int version) {
+    public Exercise(JsonNode node, @SuppressWarnings("unused") int version) {
         this(node.get("name").asString(), ExerciseUnit.valueOf(node.get("unit").asString()));
     }
 

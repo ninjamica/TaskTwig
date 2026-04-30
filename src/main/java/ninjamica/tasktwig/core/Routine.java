@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -46,7 +46,7 @@ public record Routine(StringProperty name, ObjectProperty<LocalTime> dueTime, Ob
 
                 interval = RoutineInterval.parseFromJson(node.get("interval"), version);
             }
-            default -> throw new TaskTwig.JsonVersionException("Unsupported Routine version: " + version);
+            default -> throw new TaskTwig.TwigJsonVersionException("Unsupported Routine version: " + version);
         }
 
         this(name, dueTime, interval);

@@ -12,14 +12,15 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.TextAlignment;
 import javafx.util.Subscription;
-import ninjamica.tasktwig.Routine;
-import ninjamica.tasktwig.RoutineInterval.DailyInterval;
-import ninjamica.tasktwig.RoutineInterval.DayInterval;
-import ninjamica.tasktwig.RoutineInterval.WeekInterval;
+import ninjamica.tasktwig.core.Routine;
+import ninjamica.tasktwig.core.RoutineInterval.DailyInterval;
+import ninjamica.tasktwig.core.RoutineInterval.DayInterval;
+import ninjamica.tasktwig.core.RoutineInterval.WeekInterval;
+import ninjamica.tasktwig.ui.util.TimeInput;
 
 import java.time.DayOfWeek;
 
-public class RoutineContent extends VBox {
+public class RoutinePropertyPane extends VBox {
     private Label blankLabel;
     private Card nameCard;
     private Card intervalCard;
@@ -47,14 +48,9 @@ public class RoutineContent extends VBox {
     private Subscription typeSubs = Subscription.EMPTY;
     Routine routine;
 
-    public RoutineContent() {
+    public RoutinePropertyPane() {
         initializeUI();
         updateType(null, null, false);
-    }
-
-    public RoutineContent(Routine routine) {
-        this();
-        setRoutine(routine);
     }
 
     private void initializeUI() {
@@ -137,7 +133,6 @@ public class RoutineContent extends VBox {
                 case DailyInterval daily -> "Daily";
                 case DayInterval day -> "Day Interval";
                 case WeekInterval week -> "Week Interval";
-                default -> null;
             };
             intervalChoiceBox.setValue(routineType);
             subscriptions = intervalChoiceBox.getSelectionModel().selectedItemProperty().subscribe((oldItem, newItem) -> updateType(oldItem, newItem, true)).and(subscriptions);

@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
@@ -33,7 +33,7 @@ import java.util.List;
         @JsonSubTypes.Type(value = TaskInterval.MonthInterval.class, name = "month")
 })
 @JsonIncludeProperties({"lastDone"})
-public abstract class TaskInterval {
+public sealed abstract class TaskInterval {
 
     protected final ObjectProperty<LocalDate> lastDoneProperty = new SimpleObjectProperty<>();
     protected BooleanExpression doneBinding;
@@ -212,13 +212,13 @@ public abstract class TaskInterval {
                     }
                 }
             }
-            default -> throw new TaskTwig.JsonVersionException("Unsupported TaskInterval version: " + version);
+            default -> throw new TaskTwig.TwigJsonVersionException("Unsupported TaskInterval version: " + version);
         }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"lastDone"})
-    public static class NoInterval extends TaskInterval {
+    public static final class NoInterval extends TaskInterval {
 
         public NoInterval() {
             this(null);
@@ -249,7 +249,7 @@ public abstract class TaskInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"date", "lastDone"})
-    public static class SingleDateInterval extends TaskInterval {
+    public static final class SingleDateInterval extends TaskInterval {
         private final ObjectProperty<LocalDate> dueDate = new SimpleObjectProperty<>();
 
         public SingleDateInterval(LocalDate dueDate) {
@@ -292,7 +292,7 @@ public abstract class TaskInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"interval", "fromLastDone", "lastDone", "nextDue"})
-    public static class DayInterval extends TaskInterval {
+    public static final class DayInterval extends TaskInterval {
         private final IntegerProperty intervalDays = new SimpleIntegerProperty();
         private final BooleanProperty repeatFromLastDone = new SimpleBooleanProperty();
         private final ObjectProperty<LocalDate> nextDue = new SimpleObjectProperty<>();
@@ -401,7 +401,7 @@ public abstract class TaskInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"bitmap", "lastDone"})
-    public static class WeekInterval extends TaskInterval {
+    public static final class WeekInterval extends TaskInterval {
 
         private final ReadOnlyObjectWrapper<Byte> dayOfWeekMap = new ReadOnlyObjectWrapper<>((byte) 0);
 
@@ -534,7 +534,7 @@ public abstract class TaskInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"dates", "lastDone"})
-    public static class MonthInterval extends TaskInterval {
+    public static final class MonthInterval extends TaskInterval {
         private final ObservableList<Integer> dates = FXCollections.observableArrayList();
 
         public MonthInterval() {

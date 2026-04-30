@@ -1,4 +1,4 @@
-package ninjamica.tasktwig;
+package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
@@ -21,7 +21,7 @@ import java.util.List;
         @JsonSubTypes.Type(value = RoutineInterval.DayInterval.class, name = "day"),
         @JsonSubTypes.Type(value = RoutineInterval.WeekInterval.class, name = "week")
 })
-public interface RoutineInterval {
+public sealed interface RoutineInterval {
 
     /**
      * Whether the routine is today, i.e. should show up in the today page
@@ -86,14 +86,14 @@ public interface RoutineInterval {
                     }
                 }
             }
-            default -> throw new TaskTwig.JsonVersionException("Unsupported RoutineInterval version: " + version);
+            default -> throw new TaskTwig.TwigJsonVersionException("Unsupported RoutineInterval version: " + version);
         }
-        throw new TaskTwig.JsonVersionException("Unsupported RoutineInterval type \"" + node.get("@type").asString() + "\" for version: " + version);
+        throw new TaskTwig.TwigJsonVersionException("Unsupported RoutineInterval type \"" + node.get("@type").asString() + "\" for version: " + version);
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"lastDone"})
-    class DailyInterval implements RoutineInterval {
+    final class DailyInterval implements RoutineInterval {
         private LocalDate lastDone;
 
         public DailyInterval() {}
@@ -136,7 +136,7 @@ public interface RoutineInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"interval", "fromLastDone", "lastDone", "nextDue"})
-    class DayInterval implements RoutineInterval {
+    final class DayInterval implements RoutineInterval {
         private final IntegerProperty intervalDays = new SimpleIntegerProperty();
         private final BooleanProperty repeatFromLastDone = new SimpleBooleanProperty(false);
         private LocalDate lastDone;
@@ -243,7 +243,7 @@ public interface RoutineInterval {
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"bitmap", "keepTillDone", "lastDone"})
-    class WeekInterval implements RoutineInterval {
+    final class WeekInterval implements RoutineInterval {
         private final ObjectProperty<Byte> dayOfWeekBitmap = new SimpleObjectProperty<>(((byte) 0));
         private final BooleanProperty keepTillDone = new SimpleBooleanProperty(false);
         private LocalDate lastDone;

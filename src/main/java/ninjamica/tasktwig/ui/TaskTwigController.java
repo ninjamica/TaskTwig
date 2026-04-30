@@ -41,10 +41,14 @@ import javafx.stage.WindowEvent;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
 import javafx.util.Subscription;
-import ninjamica.tasktwig.*;
-import ninjamica.tasktwig.TaskTwig.CommitDiff;
-import ninjamica.tasktwig.TaskTwig.FileAction;
-import ninjamica.tasktwig.TwigList.TwigListItem;
+import ninjamica.tasktwig.core.*;
+import ninjamica.tasktwig.core.TaskTwig.CommitDiff;
+import ninjamica.tasktwig.core.TaskTwig.FileAction;
+import ninjamica.tasktwig.core.TwigList.TwigListItem;
+import ninjamica.tasktwig.ui.util.AlertModalBox;
+import ninjamica.tasktwig.ui.util.DoneCheckBox;
+import ninjamica.tasktwig.ui.util.TimeDateModalBox;
+import ninjamica.tasktwig.ui.util.TimeInput;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeBrands;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
@@ -61,6 +65,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+@SuppressWarnings("OctalInteger")
 public class TaskTwigController {
 
     private final StackPane rootPane;
@@ -84,7 +89,7 @@ public class TaskTwigController {
     private Label workoutStatusLabel;
     private TableView<Workout> workoutTableView;
 
-    private TaskContent taskContent;
+    private TaskPropertyPane taskContent;
     private TreeTableView<Task> taskTreeTable;
     private TreeView<Object> listTree;
 
@@ -104,8 +109,8 @@ public class TaskTwigController {
 
     private Button syncButton;
     
-    // private static final String darkStylesheet = TaskTwigController.class.getResource("fxml/dark-theme.css").toExternalForm();
-    private static final String chartStylesheet = TaskTwigController.class.getResource("fxml/areaChart.css").toExternalForm();
+    // private static final String darkStylesheet = TaskTwigController.class.getResource("css/dark-theme.css").toExternalForm();
+    private static final String chartStylesheet = TaskTwigController.class.getResource("css/areaChart.css").toExternalForm();
     private static final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("EEE M/d/yyyy");
     private static final DateTimeFormatter shortDateFormat = DateTimeFormatter.ofPattern("M/d");
     private static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("h:mm a");
@@ -267,6 +272,7 @@ public class TaskTwigController {
         Card routineCard = new Card();
         routineCard.setHeader(routineLabelBox);
         routineCard.setBody(todayRoutineListView);
+        routineCard.setStyle("-fx-background: -color-fg-default");
         routineCard.getStyleClass().addAll(Styles.ELEVATED_2);
         todayGridPane.add(routineCard, 0, 0, 1, 2);
         GridPane.setHgrow(routineCard, Priority.ALWAYS);
@@ -581,7 +587,7 @@ public class TaskTwigController {
         newTaskButton.setOnAction(this::onNewTaskButtonClick);
         taskGridPane.add(newTaskButton, 0, 0);
 
-        taskContent = new TaskContent();
+        taskContent = new TaskPropertyPane();
         ScrollPane taskDetailScrollPane = new ScrollPane(taskContent);
         taskDetailScrollPane.setHbarPolicy(ScrollBarPolicy.NEVER);
         taskGridPane.add(taskDetailScrollPane, 1,1);
@@ -946,7 +952,7 @@ public class TaskTwigController {
         routineButton.setOnAction(this::createRoutine);
         routineGridPane.add(routineButton, 0, 0);
 
-        RoutineContent routineDetailView = new RoutineContent();
+        RoutinePropertyPane routineDetailView = new RoutinePropertyPane();
         ScrollPane routineDetailScrollPane = new ScrollPane(routineDetailView);
         routineDetailScrollPane.setHbarPolicy(ScrollBarPolicy.NEVER);
         routineGridPane.add(routineDetailScrollPane, 1, 1);
@@ -1699,11 +1705,11 @@ public class TaskTwigController {
 
     protected void onSleepButtonAction(ActionEvent event) {
         if(!twig.isSleeping()) {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Sleeping", "Confirm date and time when you went to bed", twig::startSleep);
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Sleeping", "Confirm date and time when you went to bed", false, twig::startSleep);
             modalPane.show(modalBox);
         }
         else {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Sleeping", "Confirm date and time when you got out of bed", datetime -> {
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Sleeping", "Confirm date and time when you got out of bed", true, datetime -> {
                 LocalDate lastNight = datetime.toLocalDate().minusDays(1);
                 if (twig.sleepRecords().containsKey(lastNight)) {
                     Alert confirmDialog = createAlert(
@@ -1753,21 +1759,15 @@ public class TaskTwigController {
 
     protected void onWorkoutButtonAction(ActionEvent event) {
         if(!twig.isWorkingOut()) {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Workout", "Confirm date and time for the start of this workout", twig::startWorkout);
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Workout", "Confirm date and time for the start of this workout", false, twig::startWorkout);
             modalPane.show(modalBox);
         }
         else {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Workout", "Confirm date and time for the end of this workout", datetime -> {
-                SortedMap<Exercise, Integer> exercises;
-                WorkoutDialog workoutDialog = new WorkoutDialog(stage, twig);
-                workoutDialog.showAndWait();
-                exercises = workoutDialog.getResult();
-
-                if (exercises != null) {
+            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Workout", "Confirm date and time for the end of this workout", true, datetime -> {
+                modalPane.show(new WorkoutModal(modalPane, twig, exercises -> {
                     twig.finishWorkout(exercises, datetime);
-
                     workoutTableView.refresh();
-                }
+                }));
             });
             modalPane.show(modalBox);
         }
@@ -1788,9 +1788,7 @@ public class TaskTwigController {
     }
 
     protected void addExerciseButtonClick(ActionEvent event) {
-        ExerciseDialog dialog = new ExerciseDialog(stage, twig.getExerciseList());
-        Optional<List<Exercise>> exerciseResult = dialog.showAndWait();
-        exerciseResult.ifPresent(exerciseList -> twig.exerciseList().setAll(exerciseList));
+        modalPane.show(new ExerciseModal(modalPane, twig.exerciseList()));
     }
 
     protected void onNewTaskButtonClick(ActionEvent event) {
@@ -1810,7 +1808,6 @@ public class TaskTwigController {
     private Alert createAlert(AlertType type, String title, String header, String content, ButtonType... buttons) {
         Alert alert = new Alert(type);
         alert.initOwner(stage);
-        // alert.getDialogPane().getStylesheets().add(darkStylesheet);
         alert.setTitle(title);
         alert.setHeaderText(header);
         alert.setContentText(content);
@@ -1913,16 +1910,16 @@ public class TaskTwigController {
             dbxAuthorize();
         }
         else {
-            Alert alert = createAlert(AlertType.CONFIRMATION,
+            modalPane.show(new AlertModalBox(
+                    modalPane,
                     "Confirm logout?",
                     "Are you sure you want to log out of your Dropbox account?",
-                    "", ButtonType.YES, ButtonType.NO);
-
-            alert.showAndWait().ifPresent(buttonType -> {
-                if (buttonType == ButtonType.YES) {
-                    twig.dbxLogout();
-                }
-            });
+                    false,
+                    buttonType -> {
+                        if (buttonType == ButtonType.YES) twig.dbxLogout();
+                    },
+                    ButtonType.YES, ButtonType.CANCEL
+            ));
         }
     }
 
@@ -1930,11 +1927,17 @@ public class TaskTwigController {
         ButtonType remoteButton = new ButtonType("Remote", ButtonBar.ButtonData.NO);
         ButtonType localButton = new ButtonType("Local", ButtonBar.ButtonData.YES);
 
-        Alert alert = createAlert(AlertType.CONFIRMATION,
-                "Data conflict!",
+//        Alert alert = createAlert(AlertType.CONFIRMATION,
+//                "Data conflict!",
+//                "Conflicting data between local and remote!",
+//                "Would you like to keep the local data or the remote (Dropbox) data?",
+//                localButton, remoteButton, ButtonType.CANCEL);
+        AlertModalBox alert = new AlertModalBox(
+                modalPane,
                 "Conflicting data between local and remote!",
                 "Would you like to keep the local data or the remote (Dropbox) data?",
-                localButton, remoteButton, ButtonType.CANCEL);
+                false, null, remoteButton, localButton
+        );
 
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent()) {
@@ -1950,12 +1953,18 @@ public class TaskTwigController {
     }
 
     private boolean userConfirmSave() {
-        Alert alert = createAlert(AlertType.CONFIRMATION,
-                "Sync data?",
+//        Alert alert = createAlert(AlertType.CONFIRMATION,
+//                "Sync data?",
+//                "Sync data before exiting?",
+//                "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
+//                ButtonType.YES, ButtonType.NO);
+//
+        AlertModalBox alert = new AlertModalBox(
+                modalPane,
                 "Sync data before exiting?",
                 "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
-                ButtonType.YES, ButtonType.NO);
-
+                false, null, ButtonType.YES, ButtonType.NO
+        );
         Optional<ButtonType> result = alert.showAndWait();
         return result.isPresent() && result.get() == ButtonType.YES;
     }
@@ -2158,13 +2167,12 @@ public class TaskTwigController {
                                     return null;
                             });
 
-                            if (commitDiff.action() != null && commitDiff.action() != FileAction.NONE){
-                                syncToDbx = exitPromptAsked
-                                    || CompletableFuture.supplyAsync(controller::userConfirmSave, Platform::runLater).join();
+                            if (commitDiff.action() != null && commitDiff.action() != FileAction.NONE) {
+                                syncToDbx = exitPromptAsked || controller.userConfirmSave();
                             }
                         }
                         else {
-                            commitDiff= twig.compareCommitToDbx(null);
+                            commitDiff = twig.compareCommitToDbx(null);
                         }
 
                         if (syncToDbx) {
