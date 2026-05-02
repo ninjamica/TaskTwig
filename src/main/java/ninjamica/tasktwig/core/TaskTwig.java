@@ -13,10 +13,8 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
-import javafx.util.Callback;
 import tools.jackson.core.*;
 import tools.jackson.core.exc.JacksonIOException;
-import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,7 +28,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 @SuppressWarnings({"OctalInteger", "ResultOfMethodCallIgnored"})
@@ -48,14 +46,15 @@ public class TaskTwig implements Serializable {
     }
 
     private static final String DBX_API_KEY = "ul8ujplgavm586q";
-    private static final int CONFIG_VERSION = 4;
+    private static final int CONFIG_VERSION = 5;
 
     private static final File DATA_DIR = new File("data");
     private static final File DBX_DIR = new File(DATA_DIR.getPath() + "/dbx");
     private static final File DBX_CRED_FILE = new File(DBX_DIR.getPath() + "/credential.app");
     private static final File COMMIT_FILE = new File(DATA_DIR.getPath()+"/commit.json");
+    private static final File LAST_SYNCED_COMMIT_FILE = new File(DATA_DIR.getPath()+"/last_synced_commit.json");
     private static final File CONFIG_FILE = new File(DATA_DIR.getPath()+"/config.json");
-    private enum DataFile {
+    public enum DataFile {
         SLEEP (new File(DATA_DIR.getPath()+"/sleep.json")),
         WORKOUT (new File(DATA_DIR.getPath()+"/workout.json")),
         TASK (new File(DATA_DIR.getPath()+"/task.json")),
@@ -93,7 +92,7 @@ public class TaskTwig implements Serializable {
     private DbxCredential dbxCredential;
     private final ObjectProperty<DbxClientV2> dbxClient = new SimpleObjectProperty<>();
     private DbxPKCEWebAuth currentDbxAuthAttempt;
-    private String lastSyncedHash;
+    private CommitData lastSyncedCommit;
 
 
     public TaskTwig() {
@@ -107,6 +106,7 @@ public class TaskTwig implements Serializable {
 
         readConfigFile();
         readDataFiles();
+        lastSyncedCommit = readLastSyncedCommitData();
 
         dayStart.subscribe((oldStart, newStart) -> {
             System.out.println(oldStart + " -> " + newStart);
@@ -315,6 +315,22 @@ public class TaskTwig implements Serializable {
             int version = parser.nextIntValue(0);
 
             switch (version) {
+                case 5 -> {
+                    assertEqual(parser.nextName(), "dayStart");
+                    dayStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "nightStart");
+                    nightStart.set(LocalTime.parse(parser.nextStringValue()));
+
+                    assertEqual(parser.nextName(), "autoSync");
+                    autoSync.set(parser.nextBooleanValue());
+
+                    assertEqual(parser.nextName(), "syncInterval");
+                    syncInterval.set(parser.nextIntValue(15));
+
+                    assertEqual(parser.nextName(), "theme");
+                    visualTheme.set(parser.nextStringValue());
+                }
                 case 4 -> {
                     assertEqual(parser.nextName(), "dayStart");
                     dayStart.set(LocalTime.parse(parser.nextStringValue()));
@@ -333,9 +349,9 @@ public class TaskTwig implements Serializable {
 
                     assertEqual(parser.nextName(), "lastSyncedHash");
                     if (parser.nextValue() == JsonToken.VALUE_STRING)
-                        lastSyncedHash = parser.getValueAsString();
+                        lastSyncedCommit = new CommitData(Instant.MIN, Base64.getDecoder().decode(parser.getValueAsString()), Collections.emptyMap());
                     else
-                        lastSyncedHash = null;
+                        lastSyncedCommit = CommitData.NONE;
                 }
                 case 3 -> {
                     assertEqual(parser.nextName(), "dayStart");
@@ -352,9 +368,9 @@ public class TaskTwig implements Serializable {
 
                     assertEqual(parser.nextName(), "lastSyncedHash");
                     if (parser.nextValue() == JsonToken.VALUE_STRING)
-                        lastSyncedHash = parser.getValueAsString();
+                        lastSyncedCommit = new CommitData(Instant.MIN, Base64.getDecoder().decode(parser.getValueAsString()), Collections.emptyMap());
                     else
-                        lastSyncedHash = null;
+                        lastSyncedCommit = CommitData.NONE;
                 }
                 case 2 -> {
                     assertEqual(parser.nextName(), "dayStart");
@@ -368,9 +384,9 @@ public class TaskTwig implements Serializable {
 
                     assertEqual(parser.nextName(), "lastSyncedHash");
                     if (parser.nextValue() == JsonToken.VALUE_STRING)
-                        lastSyncedHash = parser.getValueAsString();
+                        lastSyncedCommit = new CommitData(Instant.MIN, Base64.getDecoder().decode(parser.getValueAsString()), Collections.emptyMap());
                     else
-                        lastSyncedHash = null;
+                        lastSyncedCommit = CommitData.NONE;
                 }
                 case 1 -> {
                     assertEqual(parser.nextName(), "dayStart");
@@ -383,9 +399,9 @@ public class TaskTwig implements Serializable {
 
                     assertEqual(parser.nextName(), "lastSyncedHash");
                     if (parser.nextValue() == JsonToken.VALUE_STRING)
-                        lastSyncedHash = parser.getValueAsString();
+                        lastSyncedCommit = new CommitData(Instant.MIN, Base64.getDecoder().decode(parser.getValueAsString()), Collections.emptyMap());
                     else
-                        lastSyncedHash = null;
+                        lastSyncedCommit = CommitData.NONE;
                 }
                 default -> throw new TwigJsonVersionException("Unsupported config file version: " + version);
             }
@@ -406,11 +422,6 @@ public class TaskTwig implements Serializable {
             generator.writeBooleanProperty("autoSync", autoSync.get());
             generator.writeNumberProperty("syncInterval", syncInterval.get());
             generator.writeStringProperty("theme", visualTheme.get());
-
-            if (lastSyncedHash != null)
-                generator.writeStringProperty("lastSyncedHash", lastSyncedHash);
-            else
-                generator.writeNullProperty("lastSyncedHash");
 
             generator.writeEndObject();
         }
@@ -434,7 +445,7 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "sleepRecords");
             parser.nextToken();
-            parseJsonMap(sleepMap, parser, LocalDate::parse, Sleep::new, version);
+            parseJsonMap(sleepMap, parser, LocalDate::parse, node -> new Sleep(node, version));
         }
         catch (TwigJsonAssertException | JacksonIOException e) {
             this.sleepStart.setValue(null);
@@ -462,11 +473,11 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "exercises");
             parser.nextToken();
-            parseJsonList(this.exerciseList, parser, Exercise::new, version);
+            parseJsonList(this.exerciseList, parser, node -> new Exercise(node, version));
 
             assertEqual(parser.nextName(), "workoutRecords");
             parser.nextToken();
-            parseJsonList(this.workoutRecords, parser, Workout::new, version);
+            parseJsonList(this.workoutRecords, parser, node -> new Workout(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             this.exerciseList.clear();
             this.workoutStart.setValue(null);
@@ -482,7 +493,7 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "tasks");
             parser.nextToken();
-            parseJsonList(this.taskList, parser, Task::new, version);
+            parseJsonList(this.taskList, parser, node -> new Task(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             this.taskList.clear();
         }
@@ -496,7 +507,7 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "lists");
             parser.nextToken();
-            parseJsonList(this.twigLists, parser, TwigList::new, version);
+            parseJsonList(this.twigLists, parser, node -> new TwigList(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             this.twigLists.clear();
         }
@@ -510,7 +521,7 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "routines");
             parser.nextToken();
-            parseJsonList(this.routineList, parser, Routine::new, version);
+            parseJsonList(this.routineList, parser, node -> new Routine(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             this.routineList.clear();
         }
@@ -524,7 +535,7 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "journals");
             parser.nextToken();
-            parseJsonMap(journals, parser, LocalDate::parse, Journal::new, version);
+            parseJsonMap(journals, parser, LocalDate::parse, node -> new Journal(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             journals.clear();
         }
@@ -538,8 +549,8 @@ public class TaskTwig implements Serializable {
     }
 
     public void saveToDataFiles() {
-        Map<DataFile, byte[]> liveHashes = genLiveDataHashes();
-        List<DataFile> saveFiles = findOutOfDateFiles(liveHashes);
+        CommitData liveCommit = genLiveCommitData();
+        List<DataFile> saveFiles = findOutOfDateFiles(liveCommit);
         System.out.println("Saving files: " + saveFiles);
 
         for (DataFile file : saveFiles) {
@@ -632,26 +643,7 @@ public class TaskTwig implements Serializable {
         }
 
         if (!saveFiles.isEmpty()) {
-            try (JsonGenerator generator = mapper.createGenerator(COMMIT_FILE, JsonEncoding.UTF8)) {
-                var digest = MessageDigest.getInstance("SHA-256");
-                Map<DataFile, String> fileHashes = new TreeMap<>();
-                for (Map.Entry<DataFile, byte[]> hash : liveHashes.entrySet()) {
-                    fileHashes.put(hash.getKey(), Base64.getEncoder().encodeToString(hash.getValue()));
-                    digest.update(hash.getValue());
-                }
-                String commitHash = Base64.getEncoder().encodeToString(digest.digest());
-
-                generator.writeStartObject();
-
-                generator.writePOJOProperty("timestamp", Instant.now());
-                generator.writeStringProperty("commitHash", commitHash);
-                generator.writePOJOProperty("fileHashes", fileHashes);
-
-                generator.writeEndObject();
-
-            } catch (NoSuchAlgorithmException e) {
-                throw new RuntimeException(e);
-            }
+            writeCommitData(liveCommit, COMMIT_FILE);
         }
     }
 
@@ -660,61 +652,38 @@ public class TaskTwig implements Serializable {
             throw new TwigJsonAssertException("JSON parse encountered unexpected value. Expected: " + expected + ", actual: " + actual);
     }
 
-    private <T> void parseJsonList(List<T> list, JsonParser parser, BiFunction<JsonNode, Integer, T> callback, int version) {
+    private <T> void parseJsonList(List<T> list, JsonParser parser, Function<JsonNode, T> valueConstructor) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_ARRAY) {
             JsonNode node = parser.readValueAsTree();
-            T value = callback.apply(node, version);
+            T value = valueConstructor.apply(node);
             list.add(value);
             parser.nextToken();
         }
     }
 
-    private <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser, Callback<String, K> keyCallback, BiFunction<JsonNode, Integer, V> valueCallback, int version) {
+    private <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser,
+                                     Function<String, K> keyParser, Function<JsonNode, V> valueConstructor) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_OBJECT) {
-            K key = keyCallback.call(parser.currentName());
+            K key = keyParser.apply(parser.currentName());
             parser.nextToken();
             JsonNode node = parser.readValueAsTree();
-            V value = valueCallback.apply(node, version);
+            V value = valueConstructor.apply(node);
             map.put(key, value);
             parser.nextToken();
         }
     }
 
-    private List<DataFile> findOutOfDateFiles(Map<DataFile, byte[]> liveHashes) {
 
-        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
-            List<DataFile> files = new ArrayList<>();
-            CommitData diskCommit = readCommitData(parser);
+// ----------------------------------------------- Hashing and Commits -------------------------------------------------
 
-            for (Map.Entry<DataFile, byte[]> liveHash : liveHashes.entrySet()) {
+    public record CommitData(Instant timestamp, byte[] commitHash, Map<DataFile, byte[]> fileHashes) {
 
-                if (!diskCommit.fileHashes.containsKey(liveHash.getKey())
-                        || !Arrays.equals(liveHash.getValue(), Base64.getDecoder().decode(diskCommit.fileHashes.get(liveHash.getKey())))) {
-                    files.add(liveHash.getKey());
-                }
-            }
-
-            return files;
-        }
-        catch (TwigJsonAssertException | JacksonException e) {
-            System.out.println("Failed reading parse data: " + e.getMessage());
-            System.out.println("Skipped reading parse data");
-
-            return List.of(DataFile.values());
-        }
+        public static final CommitData NONE = new CommitData(null, null, Collections.emptyMap());
     }
 
-    private Map<DataFile, byte[]> genLiveDataHashes() {
-        Map<DataFile, byte[]> hashes = new TreeMap<>();
-        for (DataFile dataFile : DataFile.values()) {
-            hashes.put(dataFile, hashLiveData(dataFile));
-        }
-        return hashes;
-    }
-
-    private byte[] hashLiveData(DataFile file) {
+    private byte[] hashLiveDataFile(DataFile file) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
             switch (file) {
@@ -781,6 +750,246 @@ public class TaskTwig implements Serializable {
             throw new RuntimeException(e);
         }
     }
+
+    private CommitData genLiveCommitData() {
+        MessageDigest digest = null;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+
+            Map<DataFile, byte[]> fileHashes = new TreeMap<>();
+            for (DataFile dataFile : DataFile.values()) {
+                byte[] hash = hashLiveDataFile(dataFile);
+                fileHashes.put(dataFile, hash);
+                digest.update(hash);
+            }
+
+            return new CommitData(Instant.now(), digest.digest(), fileHashes);
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private CommitData readCommitData(JsonParser parser) {
+        var base64Decoder = Base64.getDecoder();
+
+        parser.nextToken();
+        assertEqual(parser.nextName(), "timestamp");
+        Instant timestamp = Instant.parse(parser.nextStringValue());
+
+        assertEqual(parser.nextName(), "commitHash");
+        byte[] commitHash = base64Decoder.decode(parser.nextStringValue());
+
+        Map<DataFile, byte[]> fileHashes = new TreeMap<>();
+        assertEqual(parser.nextName(), "fileHashes");
+        parser.nextToken();
+        parseJsonMap(fileHashes, parser, DataFile::valueOf, node -> base64Decoder.decode(node.asString()));
+
+        return new CommitData(timestamp, commitHash, fileHashes);
+    }
+
+    private void writeCommitData(CommitData commitData, File file) {
+        try (JsonGenerator generator = mapper.createGenerator(file, JsonEncoding.UTF8)) {
+            var base64Encoder = Base64.getEncoder();
+
+            generator.writeStartObject();
+
+            generator.writePOJOProperty("timestamp", commitData.timestamp());
+            generator.writeStringProperty("commitHash", base64Encoder.encodeToString(commitData.commitHash()));
+
+            generator.writeObjectPropertyStart("fileHashes");
+
+            for (Map.Entry<DataFile, byte[]> hash : commitData.fileHashes().entrySet()) {
+                generator.writeStringProperty(hash.getKey().toString(), base64Encoder.encodeToString(hash.getValue()));
+            }
+
+            generator.writeEndObject();
+            generator.writeEndObject();
+        }
+    }
+
+    private List<DataFile> findOutOfDateFiles(CommitData liveCommit) {
+
+        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
+            List<DataFile> files = new ArrayList<>();
+            CommitData diskCommit = readCommitData(parser);
+
+            for (Map.Entry<DataFile, byte[]> liveHash : liveCommit.fileHashes().entrySet()) {
+
+                if (!diskCommit.fileHashes.containsKey(liveHash.getKey())
+                        || !Arrays.equals(liveHash.getValue(), diskCommit.fileHashes().get(liveHash.getKey()))) {
+                    files.add(liveHash.getKey());
+                }
+            }
+
+            return files;
+        }
+        catch (TwigJsonAssertException | JacksonException e) {
+            System.out.println("Failed reading parse data: " + e.getMessage());
+            System.out.println("Skipped reading parse data");
+
+            return List.of(DataFile.values());
+        }
+    }
+
+    private CommitData readLocalCommitData() {
+        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
+            return readCommitData(parser);
+        }
+        catch (JacksonIOException | TwigJsonAssertException e) {
+            System.out.println("Couldn't read local commit file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private CommitData readDbxCommitData() {
+        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.getName()).start();
+             JsonParser parser = mapper.createParser(remoteCommitFile.getInputStream()))
+        {
+            return readCommitData(parser);
+        }
+        catch (DbxException | TwigJsonAssertException e) {
+            System.out.println("Couldn't read remote commit file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private CommitData readLastSyncedCommitData() {
+        try (JsonParser parser = mapper.createParser(LAST_SYNCED_COMMIT_FILE)) {
+            return readCommitData(parser);
+        }
+        catch (JacksonIOException | TwigJsonAssertException e) {
+            System.out.println("Couldn't read last synced commit file: " + e.getMessage());
+            return CommitData.NONE;
+        }
+    }
+
+
+// -------------------------------------------- Comparing and Syncing Data ---------------------------------------------
+
+    public enum FileAction {
+        DOWNLOAD,
+        UPLOAD,
+        MERGE,
+        CONFLICT,
+        NONE
+    }
+    public record CommitDiff(FileAction action, Map<DataFile, FileAction> files,
+                             CommitData localCommitData, CommitData remoteCommitData) {}
+
+    @FunctionalInterface
+    public interface SyncConflictCallback {
+        FileAction getUserChoice(FileAction overallAction, Map<DataFile, FileAction> fileActions);
+    }
+    public CommitDiff compareCommitToDbx(SyncConflictCallback conflictCallback) {
+        Map<DataFile, FileAction> fileSyncActions = new HashMap<>();
+        CommitData localCommit = readLocalCommitData();
+        CommitData remoteCommit = readDbxCommitData();
+        FileAction fileAction = FileAction.NONE;
+
+        if (localCommit == null || remoteCommit == null || Arrays.equals(localCommit.commitHash(), remoteCommit.commitHash())) {
+            if (localCommit == null && remoteCommit != null) {
+                Arrays.stream(DataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.DOWNLOAD));
+                fileAction = FileAction.DOWNLOAD;
+            }
+            else if (localCommit != null && remoteCommit == null) {
+                Arrays.stream(DataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.UPLOAD));
+                fileAction = FileAction.UPLOAD;
+            }
+        }
+        else {
+
+            for (DataFile file : DataFile.values()) {
+                byte[] localHash = localCommit.fileHashes.get(file);
+                byte[] remoteHash = remoteCommit.fileHashes.get(file);
+                byte[] lastSyncedHash = lastSyncedCommit.fileHashes.get(file);
+
+                if (!Arrays.equals(localHash, remoteHash)) {
+                    if (Arrays.equals(remoteHash, lastSyncedHash)) {
+                        fileSyncActions.put(file, FileAction.UPLOAD);
+
+                        if (fileAction == FileAction.NONE)
+                            fileAction = FileAction.UPLOAD;
+                        else if (fileAction == FileAction.DOWNLOAD)
+                            fileAction = FileAction.MERGE;
+                    }
+                    else if (Arrays.equals(localHash, lastSyncedHash)) {
+                        fileSyncActions.put(file, FileAction.DOWNLOAD);
+
+                        if (fileAction == FileAction.NONE)
+                            fileAction = FileAction.DOWNLOAD;
+                        else if (fileAction == FileAction.UPLOAD)
+                            fileAction = FileAction.MERGE;
+                    }
+                    else {
+                        fileSyncActions.put(file, FileAction.CONFLICT);
+                        fileAction = FileAction.CONFLICT;
+                    }
+                }
+            }
+
+            if (fileAction == FileAction.MERGE || fileAction == FileAction.CONFLICT) {
+                if (conflictCallback != null) {
+                    fileAction = conflictCallback.getUserChoice(fileAction, fileSyncActions);
+                    System.out.println("User chose: " + fileAction);
+                }
+            }
+        }
+
+        return new CommitDiff(fileAction, fileSyncActions, localCommit, remoteCommit);
+    }
+
+    public void dbxSync(CommitDiff commitDiff) {
+        System.out.println("sync: " + commitDiff.action() + " " + commitDiff.files());
+        if (commitDiff.action() == FileAction.DOWNLOAD || commitDiff.action() == FileAction.UPLOAD || commitDiff.action() == FileAction.MERGE) {
+            for (Map.Entry<DataFile, FileAction> file : commitDiff.files().entrySet()) {
+                try {
+                    if (commitDiff.action() == FileAction.DOWNLOAD) {
+                        dbxDownloadFile(file.getKey());
+                    }
+                    else if (commitDiff.action() == FileAction.UPLOAD || file.getValue() == FileAction.UPLOAD) {
+                        dbxUploadFile(file.getKey());
+                    }
+                    else if (file.getValue() == FileAction.DOWNLOAD) {
+                        dbxDownloadFile(file.getKey());
+                    }
+                } catch (IOException | DbxException e) {
+                    System.err.println("Failed to " + file.getValue() + " file: " + file.getKey());
+                    System.err.println(e.getMessage());
+                }
+            }
+        }
+
+        try {
+            switch (commitDiff.action()) {
+                case DOWNLOAD -> {
+                    lastSyncedCommit = commitDiff.remoteCommitData();
+                    writeCommitData(lastSyncedCommit, COMMIT_FILE);
+                    writeCommitData(lastSyncedCommit, LAST_SYNCED_COMMIT_FILE);
+
+                    readDataFiles();
+                }
+                case UPLOAD -> {
+                    lastSyncedCommit = commitDiff.localCommitData();
+                    writeCommitData(lastSyncedCommit, LAST_SYNCED_COMMIT_FILE);
+                    dbxUploadCommitFile(LAST_SYNCED_COMMIT_FILE);
+                }
+                case MERGE -> {
+                    readDataFiles();
+
+                    lastSyncedCommit = genLiveCommitData();
+                    writeCommitData(lastSyncedCommit, COMMIT_FILE);
+                    writeCommitData(lastSyncedCommit, LAST_SYNCED_COMMIT_FILE);
+                    dbxUploadCommitFile(LAST_SYNCED_COMMIT_FILE);
+                }
+            }
+        } catch (IOException | DbxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+// ----------------------------------------------------- Dropbox -------------------------------------------------------
 
     public String genDbxAuthUrl() {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
@@ -853,146 +1062,33 @@ public class TaskTwig implements Serializable {
         Platform.runLater(() -> dbxClient.set(new DbxClientV2(config, credential)));
     }
 
-    public FileAction dbxSync(Supplier<FileAction> conflictCallback) {
-        CommitDiff commitDiff = compareCommitToDbx(conflictCallback);
-        return dbxSync(commitDiff);
-    }
-    
-    public FileAction dbxSync(CommitDiff commitDiff) {
-        System.out.println("sync: " + commitDiff.action() + " " + commitDiff.files());
-        switch(commitDiff.action) {
-            case UPLOAD -> {
-                for (DataFile dataFile : commitDiff.files) {
-                    try (InputStream fileStream = new FileInputStream(dataFile.file)) {
-                        dbxClient.get().files().uploadBuilder("/" + dataFile.file.getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
-                    }
-                    catch (IOException | DbxException e) {
-                        System.out.println("Error uploading file " + dataFile.file.getName() + ": " + e.getMessage());
-                    }
-                }
-                try (InputStream fileStream = new FileInputStream(COMMIT_FILE)) {
-                    dbxClient.get().files().uploadBuilder("/" + COMMIT_FILE.getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
-                    lastSyncedHash = commitDiff.localCommitData().commitHash;
-                }
-                catch (IOException | DbxException e) {
-                    System.out.println("Error uploading commit file: " + e.getMessage());
-                }
-            }
-            case DOWNLOAD -> {
-                for (DataFile dataFile : commitDiff.files) {
-                    try (OutputStream fileStream = new FileOutputStream(dataFile.file)) {
-                        dbxClient.get().files().downloadBuilder("/" + dataFile.file.getName()).download(fileStream);
-                    }
-                    catch (IOException | DbxException e) {
-                        System.out.println("Error downloading file " + dataFile.file.getName() + ": " + e.getMessage());
-                    }
-                }
-                try (OutputStream fileStream = new FileOutputStream(COMMIT_FILE)) {
-                    dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.getName()).download(fileStream);
-                    lastSyncedHash = commitDiff.remoteCommitData().commitHash;
-                }
-                catch (IOException | DbxException e) {
-                    System.out.println("Error downloading commit file: " + e.getMessage());
-                }
-
-                readDataFiles();
-            }
+    public void dbxDownloadFile(DataFile dataFile) throws IOException, DbxException {
+        try (OutputStream fileStream = new FileOutputStream(dataFile.file)) {
+            dbxClient.get().files().downloadBuilder("/" + dataFile.file.getName()).download(fileStream);
         }
-
-        writeConfigFile();
-        return commitDiff.action;
-    }
-
-    public record CommitData(Instant timestamp, String commitHash, Map<DataFile, String> fileHashes) {}
-    public enum FileAction {
-        DOWNLOAD,
-        UPLOAD,
-        NONE
-    }
-    private CommitData readCommitData(JsonParser parser) {
-        parser.nextToken();
-        assertEqual(parser.nextName(), "timestamp");
-        Instant timestamp = Instant.parse(parser.nextStringValue());
-
-        assertEqual(parser.nextName(), "commitHash");
-        String commitHash = parser.nextStringValue();
-
-        assertEqual(parser.nextName(), "fileHashes");
-        parser.nextToken();
-        Map<DataFile, String> fileHashes = parser.readValueAs(new TypeReference<>() {});
-
-        return new CommitData(timestamp, commitHash, fileHashes);
-    }
-
-    private CommitData readLocalCommitData() {
-        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
-            return readCommitData(parser);
-        }
-        catch (JacksonIOException | TwigJsonAssertException e) {
-            System.out.println("Couldn't read local commit file: " + e.getMessage());
-            return null;
+        catch (IOException | DbxException e) {
+            System.err.println("Error downloading file " + dataFile.file.getName() + ": " + e.getMessage());
+            throw e;
         }
     }
 
-    private CommitData readDbxCommitData() {
-        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.getName()).start();
-             JsonParser parser = mapper.createParser(remoteCommitFile.getInputStream()))
-        {
-            return readCommitData(parser);
+    public void dbxUploadFile(DataFile dataFile) throws IOException, DbxException {
+        try (InputStream fileStream = new FileInputStream(dataFile.file)) {
+            dbxClient.get().files().uploadBuilder("/" + dataFile.file.getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
         }
-        catch (DbxException | TwigJsonAssertException e) {
-            System.out.println("Couldn't read remote commit file: " + e.getMessage());
-            return null;
+        catch (IOException | DbxException e) {
+            System.err.println("Error uploading file " + dataFile.file.getName() + ": " + e.getMessage());
+            throw e;
         }
     }
 
-    public record CommitDiff(FileAction action, List<DataFile> files, CommitData localCommitData, CommitData remoteCommitData) {}
-    public CommitDiff compareCommitToDbx(Supplier<FileAction> conflictCallback) {
-        List<DataFile> filesToSync = new ArrayList<>();
-        CommitData localCommit = readLocalCommitData();
-        CommitData remoteCommit = readDbxCommitData();
-        FileAction fileAction;
-
-        if (localCommit == null || remoteCommit == null || localCommit.commitHash().equals(remoteCommit.commitHash())) {
-            if (localCommit == null && remoteCommit != null) {
-                filesToSync.addAll(List.of(DataFile.values()));
-                fileAction = FileAction.DOWNLOAD;
-            }
-            else if (localCommit != null && remoteCommit == null) {
-                filesToSync.addAll(List.of(DataFile.values()));
-                fileAction = FileAction.UPLOAD;
-            }
-            else {
-                fileAction = FileAction.NONE;
-            }
+    public void dbxUploadCommitFile(File commitFile) throws IOException, DbxException {
+        try (InputStream fileStream = new FileInputStream(commitFile)) {
+            dbxClient.get().files().uploadBuilder("/commit.json").withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
         }
-        else {
-
-            if (remoteCommit.commitHash.equals(lastSyncedHash)) {
-                fileAction = FileAction.UPLOAD;
-            } else if (localCommit.commitHash.equals(lastSyncedHash)) {
-                fileAction = FileAction.DOWNLOAD;
-            } else {
-                if (conflictCallback != null) {
-                    fileAction = conflictCallback.get();
-                    System.out.println("User chose " + fileAction);
-                } else {
-                    return new CommitDiff(null, filesToSync, localCommit, remoteCommit);
-                }
-            }
-
-            if (fileAction == FileAction.NONE) {
-                return new CommitDiff(FileAction.NONE, filesToSync, localCommit, remoteCommit);
-            }
-
-            for (Map.Entry<DataFile, String> localHash : localCommit.fileHashes().entrySet()) {
-                if (!localHash.getValue().equals(remoteCommit.fileHashes().get(localHash.getKey()))) {
-                    filesToSync.add(localHash.getKey());
-                }
-            }
+        catch (IOException | DbxException e) {
+            System.err.println("Error uploading file " + commitFile.getName() + " as remote commit file: " + e.getMessage());
+            throw e;
         }
-
-        return new CommitDiff(fileAction, filesToSync, localCommit, remoteCommit);
     }
-
 }

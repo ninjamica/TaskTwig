@@ -8,6 +8,7 @@ import com.dropbox.core.DbxException;
 import javafx.animation.Animation;
 import javafx.animation.Interpolator;
 import javafx.animation.RotateTransition;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleFloatProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -45,10 +46,7 @@ import ninjamica.tasktwig.core.*;
 import ninjamica.tasktwig.core.TaskTwig.CommitDiff;
 import ninjamica.tasktwig.core.TaskTwig.FileAction;
 import ninjamica.tasktwig.core.TwigList.TwigListItem;
-import ninjamica.tasktwig.ui.util.AlertModalBox;
-import ninjamica.tasktwig.ui.util.DoneCheckBox;
-import ninjamica.tasktwig.ui.util.TimeDateModalBox;
-import ninjamica.tasktwig.ui.util.TimeInput;
+import ninjamica.tasktwig.ui.util.*;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeBrands;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
@@ -1377,7 +1375,7 @@ public class TaskTwigController {
         Tile themeTile = new Tile(
             "Theme",
             "Visual theme to use throughout the app",
-            new FontIcon(FontAwesomeSolid.PAINT_BRUSH)
+            new FontIcon(FontAwesomeSolid.PALETTE)
         );
         ChoiceBox<Theme> settingsThemeChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(themes));
         settingsThemeChoiceBox.setConverter(new StringConverter<>() {
@@ -1910,41 +1908,64 @@ public class TaskTwigController {
             dbxAuthorize();
         }
         else {
-            modalPane.show(new AlertModalBox(
+            modalPane.show(AlertModalBox.yesNoAlert(
                     modalPane,
                     "Confirm logout?",
                     "Are you sure you want to log out of your Dropbox account?",
                     false,
                     buttonType -> {
-                        if (buttonType == ButtonType.YES) twig.dbxLogout();
-                    },
-                    ButtonType.YES, ButtonType.CANCEL
+                        if (buttonType == ModalButtonType.YES) twig.dbxLogout();
+                    }
             ));
         }
     }
 
-    private FileAction handleDataConflict() {
-        ButtonType remoteButton = new ButtonType("Remote", ButtonBar.ButtonData.NO);
-        ButtonType localButton = new ButtonType("Local", ButtonBar.ButtonData.YES);
+    private FileAction handleDataConflict(FileAction overallAction, Map<TaskTwig.DataFile, FileAction> fileActions) {
+        final ModalButtonType remoteButton = new ModalButtonType("Remote", ButtonBar.ButtonData.NO, new FontIcon(FontAwesomeSolid.DOWNLOAD));
+        final ModalButtonType localButton = new ModalButtonType("Local", ButtonBar.ButtonData.YES, new FontIcon(FontAwesomeSolid.UPLOAD));
+        final ModalButtonType mergeButton = new ModalButtonType("Merge", ButtonBar.ButtonData.OTHER, new FontIcon(FontAwesomeSolid.EXCHANGE_ALT));
 
-//        Alert alert = createAlert(AlertType.CONFIRMATION,
-//                "Data conflict!",
-//                "Conflicting data between local and remote!",
-//                "Would you like to keep the local data or the remote (Dropbox) data?",
-//                localButton, remoteButton, ButtonType.CANCEL);
-        AlertModalBox alert = new AlertModalBox(
-                modalPane,
-                "Conflicting data between local and remote!",
-                "Would you like to keep the local data or the remote (Dropbox) data?",
-                false, null, remoteButton, localButton
-        );
+        GridPane commitDiffTable = new GridPane(10 ,10);
+        int row = 0;
+        for (Map.Entry<TaskTwig.DataFile, FileAction> entry : fileActions.entrySet()) {
+            String conflictLabel = switch(entry.getValue()) {
+                case DOWNLOAD -> "Remote is Ahead";
+                case UPLOAD -> "Local is Ahead";
+                case CONFLICT -> "Local and Remove Conflict";
+                default -> throw new IllegalStateException("Unexpected FileAction for file in data conflict handler gui: " + entry.getValue());
+            };
 
-        Optional<ButtonType> result = alert.showAndWait();
+            commitDiffTable.add(new Label(entry.getKey().toString()), 0, row);
+            commitDiffTable.add(new Label(conflictLabel), 1, row++);
+        }
+
+        AlertModalBox alert = switch(overallAction) {
+            case MERGE -> new AlertModalBox(
+                    modalPane,
+                    "Conflicting data between local and remote!",
+                    "Data across non-overlapping files conflict between local and remote. " +
+                            "Would you like to merge the data, keep only the local data, or keep only the remote (Dropbox) data?",
+                    commitDiffTable, false, null,
+                    mergeButton, remoteButton, localButton, ModalButtonType.CANCEL
+            );
+            case CONFLICT -> new AlertModalBox(
+                    modalPane,
+                    "Conflicting data between local and remote!",
+                    "Would you like to keep the local data or the remote (Dropbox) data?",
+                    commitDiffTable, false, null,
+                    remoteButton, localButton, ModalButtonType.CANCEL
+            );
+            default -> throw new IllegalStateException("Unexpected FileAction in data conflict handler gui: " + overallAction);
+        };
+
+        Optional<ModalButtonType> result = alert.showAndWait();
         if (result.isPresent()) {
             if (result.get() == remoteButton)
                 return FileAction.DOWNLOAD;
             else if (result.get() == localButton)
                 return FileAction.UPLOAD;
+            else if (result.get() == mergeButton)
+                return FileAction.MERGE;
             else
                 return FileAction.NONE;
         }
@@ -1959,14 +1980,14 @@ public class TaskTwigController {
 //                "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
 //                ButtonType.YES, ButtonType.NO);
 //
-        AlertModalBox alert = new AlertModalBox(
+        AlertModalBox alert = AlertModalBox.yesNoAlert(
                 modalPane,
                 "Sync data before exiting?",
                 "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
-                false, null, ButtonType.YES, ButtonType.NO
+                false, null
         );
-        Optional<ButtonType> result = alert.showAndWait();
-        return result.isPresent() && result.get() == ButtonType.YES;
+        Optional<ModalButtonType> result = alert.showAndWait();
+        return result.isPresent() && result.get() == ModalButtonType.YES;
     }
 
     private void onSyncButton(ActionEvent event) {
@@ -2071,7 +2092,8 @@ public class TaskTwigController {
             UPLOAD(FontAwesomeSolid.CLOUD_UPLOAD_ALT),
             DOWNLOAD(FontAwesomeSolid.CLOUD_DOWNLOAD_ALT),
             DONE(FontAwesomeSolid.CHECK),
-            CONFLICT(FontAwesomeSolid.UNLINK);
+            CONFLICT(FontAwesomeSolid.UNLINK),
+            MERGE(FontAwesomeSolid.EXCHANGE_ALT);
 
             public final FontIcon icon;
             private Animation animation;
@@ -2100,7 +2122,7 @@ public class TaskTwigController {
                             iconState.animation = syncIconAnimation;
                         }
                         case SAVE, UPLOAD, DOWNLOAD -> {
-                            javafx.animation.Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
+                            Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
                             bobAnimation.setRate(0.2);
                             bobAnimation.setCycleCount(Animation.INDEFINITE);
                             iconState.animation = bobAnimation;
@@ -2159,10 +2181,10 @@ public class TaskTwigController {
                             commitDiff = twig.compareCommitToDbx(controller::handleDataConflict);
                         }
                         else if (exitPrompt) {
-                            commitDiff = twig.compareCommitToDbx(() -> {
+                            commitDiff = twig.compareCommitToDbx((overallAction, fileActions) -> {
                                 exitPromptAsked = true;
                                 if (controller.userConfirmSave())
-                                    return controller.handleDataConflict();
+                                    return controller.handleDataConflict(overallAction, fileActions);
                                 else
                                     return null;
                             });
@@ -2187,6 +2209,11 @@ public class TaskTwigController {
                                     setIconUI(IconState.DOWNLOAD, true);
                                     CompletableFuture.runAsync(controller::detachTwigData, Platform::runLater).join();
                                 }
+                                case MERGE -> {
+                                    labelText = "Merging data from Dropbox with local";
+                                    setIconUI(IconState.MERGE, true);
+                                    CompletableFuture.runAsync(controller::detachTwigData, Platform::runLater).join();
+                                }
                                 case NONE -> {
                                     labelText = "In sync as of " + LocalTime.now().format(timeFormat);
                                     setIconUI(IconState.DONE, false);
@@ -2197,34 +2224,38 @@ public class TaskTwigController {
                             twig.dbxSync(commitDiff);
 
                             setIconUI(IconState.DONE, false);
-                            String finishSyncText;
-                            switch (commitDiff.action()) {
+                            String finishSyncText = switch (commitDiff.action()) {
                                 case UPLOAD ->
-                                        finishSyncText = "Synced to remote at " + LocalTime.now().format(timeFormat);
+                                        "Synced to remote at " + LocalTime.now().format(timeFormat);
                                 case DOWNLOAD -> {
-                                    finishSyncText = "Synced from remote at " + LocalTime.now().format(timeFormat);
                                     Platform.runLater(controller::attachTwigData);
+                                    yield "Synced from remote at " + LocalTime.now().format(timeFormat);
                                 }
-                                case NONE -> finishSyncText = labelText;
-                                default -> finishSyncText = "";
-                            }
+                                case MERGE -> {
+                                    Platform.runLater(controller::attachTwigData);
+                                    yield "Synced with remote at " + LocalTime.now().format(timeFormat);
+                                }
+                                case NONE -> labelText;
+                                default -> "";
+                            };
                             updateMessage(finishSyncText);
                         }
                         else {
+                            assert commitDiff.action() != null;
                             String syncCompareText = switch(commitDiff.action()) {
-                                case FileAction.NONE -> {
+                                case NONE -> {
                                     setIconUI(IconState.DONE, false);
                                     yield "In sync as of " + LocalTime.now().format(timeFormat);
                                 }
-                                case FileAction.UPLOAD -> {
+                                case UPLOAD -> {
                                     setIconUI(IconState.UPLOAD, false);
                                     yield "Ahead of remote";
                                 }
-                                case FileAction.DOWNLOAD -> {
+                                case DOWNLOAD -> {
                                     setIconUI(IconState.DOWNLOAD, false);
                                     yield "Behind remote";
                                 }
-                                case null -> {
+                                case MERGE, CONFLICT -> {
                                     setIconUI(IconState.CONFLICT, false);
                                     yield "local/remote conflict (press sync to resolve)";
                                 }

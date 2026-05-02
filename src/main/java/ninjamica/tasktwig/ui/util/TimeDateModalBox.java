@@ -4,7 +4,6 @@ import atlantafx.base.controls.ModalPane;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
@@ -16,14 +15,14 @@ import java.util.function.Consumer;
 
 public class TimeDateModalBox extends AlertModalBox {
 
-    private static final ButtonType CONFIRM = new ButtonType("Confirm", ButtonBar.ButtonData.OK_DONE);
+    private static final ModalButtonType CONFIRM = new ModalButtonType("Confirm", ButtonBar.ButtonData.OK_DONE);
 
     private final TimeInput timeInput;
     private final DatePicker datePicker;
     private final Consumer<LocalDateTime> onSubmit;
 
     public TimeDateModalBox(ModalPane modalPane, String title, String description, boolean submitAfterClose, Consumer<LocalDateTime> onSubmit) {
-        super(modalPane, title, description, submitAfterClose, CONFIRM, ButtonType.CANCEL);
+        super(modalPane, title, description, submitAfterClose, CONFIRM, ModalButtonType.CANCEL);
         this.onSubmit = onSubmit;
 
         timeInput = new TimeInput(LocalTime.now(), false);
@@ -43,7 +42,7 @@ public class TimeDateModalBox extends AlertModalBox {
         super.buttonCallback = this::onSubmitAction;
     }
 
-    private void onSubmitAction(ButtonType buttonType) {
+    private void onSubmitAction(ModalButtonType buttonType) {
         if (buttonType == CONFIRM) {
             onSubmit.accept(timeInput.getTime().atDate(datePicker.getValue()));
         }

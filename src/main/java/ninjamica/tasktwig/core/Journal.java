@@ -98,25 +98,26 @@ public record Journal(StringProperty text,
             return completedRoutines;
     }
 
-    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public boolean isEmpty() {
-        return text.isEmpty().and(weight.isNull()).get() && completedRoutines.isEmpty() && completedTasks().isEmpty();
+        return getText().isBlank() && getWeight() == null && getTasksJson().isEmpty() && getRoutinesJson().isEmpty();
     }
 
     public void hashContents(MessageDigest digest) {
-        if (!isEmpty()) {
+        String text = getText();
+        Float weight = getWeight();
+        List<String> tasks = getTasksJson();
+        List<String> routines = getRoutinesJson();
+
+        if (!text.isBlank() || weight != null || !tasks.isEmpty() || !routines.isEmpty()) {
             digest.update(getText().getBytes(StandardCharsets.UTF_8));
 
-            Float weight = getWeight();
             if (weight != null)
                 digest.update(getWeight().toString().getBytes(StandardCharsets.UTF_8));
 
-            List<String> tasks = getTasksJson();
             for (String task : tasks) {
                 digest.update(task.getBytes(StandardCharsets.UTF_8));
             }
 
-            List<String> routines = getRoutinesJson();
             for (String routine : routines) {
                 digest.update(routine.getBytes(StandardCharsets.UTF_8));
             }
