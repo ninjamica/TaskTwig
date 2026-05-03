@@ -48,30 +48,59 @@ public class TaskTwig implements Serializable {
     private static final String DBX_API_KEY = "ul8ujplgavm586q";
     private static final int CONFIG_VERSION = 5;
 
-    private static final File DATA_DIR = new File("data");
-    private static final File DBX_DIR = new File(DATA_DIR.getPath() + "/dbx");
-    private static final File DBX_CRED_FILE = new File(DBX_DIR.getPath() + "/credential.app");
-    private static final File COMMIT_FILE = new File(DATA_DIR.getPath()+"/commit.json");
-    private static final File LAST_SYNCED_COMMIT_FILE = new File(DATA_DIR.getPath()+"/last_synced_commit.json");
-    private static final File CONFIG_FILE = new File(DATA_DIR.getPath()+"/config.json");
-    public enum DataFile {
-        SLEEP (new File(DATA_DIR.getPath()+"/sleep.json")),
-        WORKOUT (new File(DATA_DIR.getPath()+"/workout.json")),
-        TASK (new File(DATA_DIR.getPath()+"/task.json")),
-        ROUTINE (new File(DATA_DIR.getPath()+"/routine.json")),
-        LIST (new File(DATA_DIR.getPath()+"/list.json")),
-        JOURNAL (new File(DATA_DIR.getPath()+"/journal.json"));
+    public final class TwigFile {
+        final String fileSubPath;
+        private File file;
 
-        public final File file;
-        DataFile(File file) {
-            this.file = file;
+        public TwigFile(String filePath) {
+            this.fileSubPath = filePath;
         }
+
+        public File file() {
+            if (file == null) {
+                file = new File(dataDir, fileSubPath);
+            }
+            return file;
+        }
+    }
+
+    private final TwigFile DBX_DIR = new TwigFile("/dbx");
+    private final TwigFile DBX_CRED_FILE = new TwigFile("/credential.app");
+    private final TwigFile COMMIT_FILE = new TwigFile("/commit.json");
+    private final TwigFile LAST_SYNCED_COMMIT_FILE = new TwigFile("/last_synced_commit.json");
+    private final TwigFile CONFIG_FILE = new TwigFile("/config.json");
+
+    private final TwigFile SLEEP_FILE = new TwigFile("/sleep.json");
+    private final TwigFile WORKOUT_FILE = new TwigFile("/workout.json");
+    private final TwigFile TASK_FILE = new TwigFile("/task.json");
+    private final TwigFile ROUTINE_FILE = new TwigFile("/routine.json");
+    private final TwigFile LIST_FILE = new TwigFile("/list.json");
+    private final TwigFile JOURNAL_FILE = new TwigFile("/journal.json");
+
+    public enum TwigDataFile {
+        SLEEP,
+        WORKOUT,
+        TASK,
+        ROUTINE,
+        LIST,
+        JOURNAL
+    }
+
+    private final Map<TwigDataFile, TwigFile> DATA_FILES = new HashMap<>();
+    {
+        DATA_FILES.put(TwigDataFile.SLEEP, SLEEP_FILE);
+        DATA_FILES.put(TwigDataFile.WORKOUT, WORKOUT_FILE);
+        DATA_FILES.put(TwigDataFile.TASK, TASK_FILE);
+        DATA_FILES.put(TwigDataFile.ROUTINE, ROUTINE_FILE);
+        DATA_FILES.put(TwigDataFile.LIST, LIST_FILE);
+        DATA_FILES.put(TwigDataFile.JOURNAL, JOURNAL_FILE);
     }
 
     private static TaskTwig instance;
     private static boolean notFXThread = false;
     private static final ReadOnlyObjectWrapper<LocalDate> today = new ReadOnlyObjectWrapper<>(null);
 
+    private final File dataDir;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private ObservableMap<LocalDate, Sleep> sleepRecords;
@@ -95,14 +124,15 @@ public class TaskTwig implements Serializable {
     private CommitData lastSyncedCommit;
 
 
-    public TaskTwig() {
+    public TaskTwig(File dataStorageDir) {
         TaskTwig.instance = this;
+        dataDir = dataStorageDir;
 
-        if (!DATA_DIR.exists())
-            DATA_DIR.mkdirs();
+        if (!dataDir.exists())
+            dataDir.mkdirs();
 
-        if (!DBX_DIR.exists())
-            DBX_DIR.mkdirs();
+        if (!DBX_DIR.file().exists())
+            DBX_DIR.file().mkdirs();
 
         readConfigFile();
         readDataFiles();
@@ -309,7 +339,7 @@ public class TaskTwig implements Serializable {
     }
 
     private void readConfigFile() {
-        try (JsonParser parser = mapper.createParser(CONFIG_FILE)) {
+        try (JsonParser parser = mapper.createParser(CONFIG_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version = parser.nextIntValue(0);
@@ -413,7 +443,7 @@ public class TaskTwig implements Serializable {
 
     private void writeConfigFile() {
         System.out.println("Writing config file");
-        try (JsonGenerator generator = mapper.createGenerator(CONFIG_FILE, JsonEncoding.UTF8)) {
+        try (JsonGenerator generator = mapper.createGenerator(CONFIG_FILE.file(), JsonEncoding.UTF8)) {
             generator.writeStartObject();
 
             generator.writeNumberProperty("version", CONFIG_VERSION);
@@ -430,7 +460,7 @@ public class TaskTwig implements Serializable {
     private void readDataFiles() {
         // Parse sleep records
         SortedMap<LocalDate, Sleep> sleepMap = new TreeMap<>();
-        try (JsonParser parser = mapper.createParser(DataFile.SLEEP.file)) {
+        try (JsonParser parser = mapper.createParser(SLEEP_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version = parser.nextIntValue(0);
@@ -458,7 +488,7 @@ public class TaskTwig implements Serializable {
         // Parse workout records
         this.exerciseList = FXCollections.observableArrayList();
         this.workoutRecords = FXCollections.observableArrayList();
-        try (JsonParser parser = mapper.createParser(DataFile.WORKOUT.file)) {
+        try (JsonParser parser = mapper.createParser(WORKOUT_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version = parser.nextIntValue(0);
@@ -486,7 +516,7 @@ public class TaskTwig implements Serializable {
 
         // Parse tasks
         this.taskList = FXCollections.observableArrayList(task -> new Observable[] {task.intervalProperty(), task.inProgressObservable()});
-        try (JsonParser parser = mapper.createParser(DataFile.TASK.file)) {
+        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
@@ -500,7 +530,7 @@ public class TaskTwig implements Serializable {
 
         // Parse lists
         this.twigLists = FXCollections.observableArrayList();
-        try (JsonParser parser = mapper.createParser(DataFile.LIST.file)) {
+        try (JsonParser parser = mapper.createParser(LIST_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
@@ -514,7 +544,7 @@ public class TaskTwig implements Serializable {
 
         // Parse routines
         this.routineList = FXCollections.observableArrayList(routine -> new Observable[] {routine.interval()});
-        try (JsonParser parser = mapper.createParser(DataFile.ROUTINE.file)) {
+        try (JsonParser parser = mapper.createParser(ROUTINE_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
@@ -528,7 +558,7 @@ public class TaskTwig implements Serializable {
 
         // Parse journals
         SortedMap<LocalDate, Journal> journals = new TreeMap<>();
-        try (JsonParser parser = mapper.createParser(DataFile.JOURNAL.file)) {
+        try (JsonParser parser = mapper.createParser(JOURNAL_FILE.file())) {
             parser.nextToken();
             assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
@@ -550,13 +580,13 @@ public class TaskTwig implements Serializable {
 
     public void saveToDataFiles() {
         CommitData liveCommit = genLiveCommitData();
-        List<DataFile> saveFiles = findOutOfDateFiles(liveCommit);
+        List<TwigDataFile> saveFiles = findOutOfDateFiles(liveCommit);
         System.out.println("Saving files: " + saveFiles);
 
-        for (DataFile file : saveFiles) {
+        for (TwigDataFile file : saveFiles) {
             switch (file) {
                 case SLEEP -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.SLEEP.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(SLEEP_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", Sleep.VERSION);
@@ -566,7 +596,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case WORKOUT -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.WORKOUT.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(WORKOUT_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", Workout.VERSION);
@@ -578,7 +608,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case TASK -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.TASK.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(TASK_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", Task.VERSION);
@@ -593,7 +623,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case LIST -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.LIST.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(LIST_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", TwigList.VERSION);
@@ -608,7 +638,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case ROUTINE -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.ROUTINE.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(ROUTINE_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", Routine.VERSION);
@@ -623,7 +653,7 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case JOURNAL -> {
-                    try (JsonGenerator generator = mapper.createGenerator(DataFile.JOURNAL.file, JsonEncoding.UTF8)) {
+                    try (JsonGenerator generator = mapper.createGenerator(JOURNAL_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
                         generator.writeNumberProperty("version", Journal.VERSION);
@@ -678,12 +708,12 @@ public class TaskTwig implements Serializable {
 
 // ----------------------------------------------- Hashing and Commits -------------------------------------------------
 
-    public record CommitData(Instant timestamp, byte[] commitHash, Map<DataFile, byte[]> fileHashes) {
+    public record CommitData(Instant timestamp, byte[] commitHash, Map<TwigDataFile, byte[]> fileHashes) {
 
         public static final CommitData NONE = new CommitData(null, null, Collections.emptyMap());
     }
 
-    private byte[] hashLiveDataFile(DataFile file) {
+    private byte[] hashLiveDataFile(TwigDataFile file) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
             switch (file) {
@@ -756,8 +786,8 @@ public class TaskTwig implements Serializable {
         try {
             digest = MessageDigest.getInstance("SHA-256");
 
-            Map<DataFile, byte[]> fileHashes = new TreeMap<>();
-            for (DataFile dataFile : DataFile.values()) {
+            Map<TwigDataFile, byte[]> fileHashes = new TreeMap<>();
+            for (TwigDataFile dataFile : TwigDataFile.values()) {
                 byte[] hash = hashLiveDataFile(dataFile);
                 fileHashes.put(dataFile, hash);
                 digest.update(hash);
@@ -780,16 +810,16 @@ public class TaskTwig implements Serializable {
         assertEqual(parser.nextName(), "commitHash");
         byte[] commitHash = base64Decoder.decode(parser.nextStringValue());
 
-        Map<DataFile, byte[]> fileHashes = new TreeMap<>();
+        Map<TwigDataFile, byte[]> fileHashes = new TreeMap<>();
         assertEqual(parser.nextName(), "fileHashes");
         parser.nextToken();
-        parseJsonMap(fileHashes, parser, DataFile::valueOf, node -> base64Decoder.decode(node.asString()));
+        parseJsonMap(fileHashes, parser, TwigDataFile::valueOf, node -> base64Decoder.decode(node.asString()));
 
         return new CommitData(timestamp, commitHash, fileHashes);
     }
 
-    private void writeCommitData(CommitData commitData, File file) {
-        try (JsonGenerator generator = mapper.createGenerator(file, JsonEncoding.UTF8)) {
+    private void writeCommitData(CommitData commitData, TwigFile file) {
+        try (JsonGenerator generator = mapper.createGenerator(file.file(), JsonEncoding.UTF8)) {
             var base64Encoder = Base64.getEncoder();
 
             generator.writeStartObject();
@@ -799,7 +829,7 @@ public class TaskTwig implements Serializable {
 
             generator.writeObjectPropertyStart("fileHashes");
 
-            for (Map.Entry<DataFile, byte[]> hash : commitData.fileHashes().entrySet()) {
+            for (Map.Entry<TwigDataFile, byte[]> hash : commitData.fileHashes().entrySet()) {
                 generator.writeStringProperty(hash.getKey().toString(), base64Encoder.encodeToString(hash.getValue()));
             }
 
@@ -808,13 +838,13 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private List<DataFile> findOutOfDateFiles(CommitData liveCommit) {
+    private List<TwigDataFile> findOutOfDateFiles(CommitData liveCommit) {
 
-        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
-            List<DataFile> files = new ArrayList<>();
+        try (JsonParser parser = mapper.createParser(COMMIT_FILE.file())) {
+            List<TwigDataFile> files = new ArrayList<>();
             CommitData diskCommit = readCommitData(parser);
 
-            for (Map.Entry<DataFile, byte[]> liveHash : liveCommit.fileHashes().entrySet()) {
+            for (Map.Entry<TwigDataFile, byte[]> liveHash : liveCommit.fileHashes().entrySet()) {
 
                 if (!diskCommit.fileHashes.containsKey(liveHash.getKey())
                         || !Arrays.equals(liveHash.getValue(), diskCommit.fileHashes().get(liveHash.getKey()))) {
@@ -828,12 +858,12 @@ public class TaskTwig implements Serializable {
             System.out.println("Failed reading parse data: " + e.getMessage());
             System.out.println("Skipped reading parse data");
 
-            return List.of(DataFile.values());
+            return List.of(TwigDataFile.values());
         }
     }
 
     private CommitData readLocalCommitData() {
-        try (JsonParser parser = mapper.createParser(COMMIT_FILE)) {
+        try (JsonParser parser = mapper.createParser(COMMIT_FILE.file())) {
             return readCommitData(parser);
         }
         catch (JacksonIOException | TwigJsonAssertException e) {
@@ -843,7 +873,7 @@ public class TaskTwig implements Serializable {
     }
 
     private CommitData readDbxCommitData() {
-        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.getName()).start();
+        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder(COMMIT_FILE.fileSubPath).start();
              JsonParser parser = mapper.createParser(remoteCommitFile.getInputStream()))
         {
             return readCommitData(parser);
@@ -855,7 +885,7 @@ public class TaskTwig implements Serializable {
     }
 
     private CommitData readLastSyncedCommitData() {
-        try (JsonParser parser = mapper.createParser(LAST_SYNCED_COMMIT_FILE)) {
+        try (JsonParser parser = mapper.createParser(LAST_SYNCED_COMMIT_FILE.file())) {
             return readCommitData(parser);
         }
         catch (JacksonIOException | TwigJsonAssertException e) {
@@ -874,32 +904,32 @@ public class TaskTwig implements Serializable {
         CONFLICT,
         NONE
     }
-    public record CommitDiff(FileAction action, Map<DataFile, FileAction> files,
+    public record CommitDiff(FileAction action, Map<TwigDataFile, FileAction> files,
                              CommitData localCommitData, CommitData remoteCommitData) {}
 
     @FunctionalInterface
     public interface SyncConflictCallback {
-        FileAction getUserChoice(FileAction overallAction, Map<DataFile, FileAction> fileActions);
+        FileAction getUserChoice(FileAction overallAction, Map<TwigDataFile, FileAction> fileActions);
     }
     public CommitDiff compareCommitToDbx(SyncConflictCallback conflictCallback) {
-        Map<DataFile, FileAction> fileSyncActions = new HashMap<>();
+        Map<TwigDataFile, FileAction> fileSyncActions = new HashMap<>();
         CommitData localCommit = readLocalCommitData();
         CommitData remoteCommit = readDbxCommitData();
         FileAction fileAction = FileAction.NONE;
 
         if (localCommit == null || remoteCommit == null || Arrays.equals(localCommit.commitHash(), remoteCommit.commitHash())) {
             if (localCommit == null && remoteCommit != null) {
-                Arrays.stream(DataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.DOWNLOAD));
+                Arrays.stream(TwigDataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.DOWNLOAD));
                 fileAction = FileAction.DOWNLOAD;
             }
             else if (localCommit != null && remoteCommit == null) {
-                Arrays.stream(DataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.UPLOAD));
+                Arrays.stream(TwigDataFile.values()).forEach(file -> fileSyncActions.put(file, FileAction.UPLOAD));
                 fileAction = FileAction.UPLOAD;
             }
         }
         else {
 
-            for (DataFile file : DataFile.values()) {
+            for (TwigDataFile file : TwigDataFile.values()) {
                 byte[] localHash = localCommit.fileHashes.get(file);
                 byte[] remoteHash = remoteCommit.fileHashes.get(file);
                 byte[] lastSyncedHash = lastSyncedCommit.fileHashes.get(file);
@@ -942,16 +972,16 @@ public class TaskTwig implements Serializable {
     public void dbxSync(CommitDiff commitDiff) {
         System.out.println("sync: " + commitDiff.action() + " " + commitDiff.files());
         if (commitDiff.action() == FileAction.DOWNLOAD || commitDiff.action() == FileAction.UPLOAD || commitDiff.action() == FileAction.MERGE) {
-            for (Map.Entry<DataFile, FileAction> file : commitDiff.files().entrySet()) {
+            for (Map.Entry<TwigDataFile, FileAction> file : commitDiff.files().entrySet()) {
                 try {
                     if (commitDiff.action() == FileAction.DOWNLOAD) {
-                        dbxDownloadFile(file.getKey());
+                        dbxDownloadFile(DATA_FILES.get(file.getKey()));
                     }
                     else if (commitDiff.action() == FileAction.UPLOAD || file.getValue() == FileAction.UPLOAD) {
-                        dbxUploadFile(file.getKey());
+                        dbxUploadFile(DATA_FILES.get(file.getKey()));
                     }
                     else if (file.getValue() == FileAction.DOWNLOAD) {
-                        dbxDownloadFile(file.getKey());
+                        dbxDownloadFile(DATA_FILES.get(file.getKey()));
                     }
                 } catch (IOException | DbxException e) {
                     System.err.println("Failed to " + file.getValue() + " file: " + file.getKey());
@@ -1017,8 +1047,8 @@ public class TaskTwig implements Serializable {
         currentDbxAuthAttempt = null;
 
         try {
-            DBX_CRED_FILE.createNewFile();
-            DbxCredential.Writer.writeToFile(dbxCredential, DBX_CRED_FILE);
+            DBX_CRED_FILE.file().createNewFile();
+            DbxCredential.Writer.writeToFile(dbxCredential, DBX_CRED_FILE.file());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -1028,9 +1058,9 @@ public class TaskTwig implements Serializable {
     public boolean authDbxFromFile() {
         DbxRequestConfig config = DbxRequestConfig.newBuilder("TaskTwig/alpha").build();
 
-        if (DBX_CRED_FILE.exists()) {
+        if (DBX_CRED_FILE.file().exists()) {
             try {
-                dbxCredential = DbxCredential.Reader.readFromFile(DBX_CRED_FILE);
+                dbxCredential = DbxCredential.Reader.readFromFile(DBX_CRED_FILE.file());
                 if (dbxCredential.aboutToExpire()) {
                     dbxCredential.refresh(config);
                 }
@@ -1052,7 +1082,7 @@ public class TaskTwig implements Serializable {
     }
 
     public void dbxLogout() {
-        DBX_CRED_FILE.delete();
+        DBX_CRED_FILE.file().delete();
         dbxCredential = null;
         dbxClient.set(null);
     }
@@ -1062,32 +1092,32 @@ public class TaskTwig implements Serializable {
         Platform.runLater(() -> dbxClient.set(new DbxClientV2(config, credential)));
     }
 
-    public void dbxDownloadFile(DataFile dataFile) throws IOException, DbxException {
-        try (OutputStream fileStream = new FileOutputStream(dataFile.file)) {
-            dbxClient.get().files().downloadBuilder("/" + dataFile.file.getName()).download(fileStream);
+    public void dbxDownloadFile(TwigFile dataFile) throws IOException, DbxException {
+        try (OutputStream fileStream = new FileOutputStream(dataFile.file())) {
+            dbxClient.get().files().downloadBuilder("/" + dataFile.file().getName()).download(fileStream);
         }
         catch (IOException | DbxException e) {
-            System.err.println("Error downloading file " + dataFile.file.getName() + ": " + e.getMessage());
+            System.err.println("Error downloading file " + dataFile.file().getName() + ": " + e.getMessage());
             throw e;
         }
     }
 
-    public void dbxUploadFile(DataFile dataFile) throws IOException, DbxException {
-        try (InputStream fileStream = new FileInputStream(dataFile.file)) {
-            dbxClient.get().files().uploadBuilder("/" + dataFile.file.getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
+    public void dbxUploadFile(TwigFile dataFile) throws IOException, DbxException {
+        try (InputStream fileStream = new FileInputStream(dataFile.file())) {
+            dbxClient.get().files().uploadBuilder("/" + dataFile.file().getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
         }
         catch (IOException | DbxException e) {
-            System.err.println("Error uploading file " + dataFile.file.getName() + ": " + e.getMessage());
+            System.err.println("Error uploading file " + dataFile.file().getName() + ": " + e.getMessage());
             throw e;
         }
     }
 
-    public void dbxUploadCommitFile(File commitFile) throws IOException, DbxException {
-        try (InputStream fileStream = new FileInputStream(commitFile)) {
+    public void dbxUploadCommitFile(TwigFile commitFile) throws IOException, DbxException {
+        try (InputStream fileStream = new FileInputStream(commitFile.file())) {
             dbxClient.get().files().uploadBuilder("/commit.json").withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
         }
         catch (IOException | DbxException e) {
-            System.err.println("Error uploading file " + commitFile.getName() + " as remote commit file: " + e.getMessage());
+            System.err.println("Error uploading file " + commitFile.file().getName() + " as remote commit file: " + e.getMessage());
             throw e;
         }
     }

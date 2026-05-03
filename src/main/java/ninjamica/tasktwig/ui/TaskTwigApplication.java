@@ -1,17 +1,25 @@
 package ninjamica.tasktwig.ui;
 
 import atlantafx.base.theme.Theme;
+import com.gluonhq.attach.storage.StorageService;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Stage;
+import ninjamica.tasktwig.core.TaskTwig;
 import org.jetbrains.annotations.NotNull;
+
+import java.io.File;
 
 public class TaskTwigApplication extends Application {
     @Override
     public void start(Stage stage) {
 
-        TaskTwigController controller = new TaskTwigController(this);
+        StorageService storageService = StorageService.create().orElseThrow();
+        File dataDir = storageService.getPrivateStorage().orElseThrow();
+        TaskTwig taskTwig = new TaskTwig(dataDir);
+
+        TaskTwigController controller = new TaskTwigController(this, taskTwig);
         Scene scene = new Scene(controller.getRoot());
         controller.setStage(stage);
 

@@ -126,7 +126,7 @@ public class TaskTwigController {
             new Dracula()
     };
 
-    private final TaskTwig twig = new TaskTwig();
+    private final TaskTwig twig;
     private final TaskTwigApplication application;
     private Stage stage;
     private Subscription subscriptions = Subscription.EMPTY;
@@ -137,8 +137,9 @@ public class TaskTwigController {
     private final XYChart.Series<String, Number> sleepEndChartData = new XYChart.Series<>();
 
 
-    public TaskTwigController(TaskTwigApplication application) {
+    public TaskTwigController(TaskTwigApplication application, TaskTwig taskTwig) {
         this.application = application;
+        this.twig = taskTwig;
         backgroundService = new SaveSyncService(this);
         
         ToolBar toolBar = initToolBar();
@@ -1920,14 +1921,14 @@ public class TaskTwigController {
         }
     }
 
-    private FileAction handleDataConflict(FileAction overallAction, Map<TaskTwig.DataFile, FileAction> fileActions) {
+    private FileAction handleDataConflict(FileAction overallAction, Map<TaskTwig.TwigDataFile, FileAction> fileActions) {
         final ModalButtonType remoteButton = new ModalButtonType("Remote", ButtonBar.ButtonData.NO, new FontIcon(FontAwesomeSolid.DOWNLOAD));
         final ModalButtonType localButton = new ModalButtonType("Local", ButtonBar.ButtonData.YES, new FontIcon(FontAwesomeSolid.UPLOAD));
         final ModalButtonType mergeButton = new ModalButtonType("Merge", ButtonBar.ButtonData.OTHER, new FontIcon(FontAwesomeSolid.EXCHANGE_ALT));
 
         GridPane commitDiffTable = new GridPane(10 ,10);
         int row = 0;
-        for (Map.Entry<TaskTwig.DataFile, FileAction> entry : fileActions.entrySet()) {
+        for (Map.Entry<TaskTwig.TwigDataFile, FileAction> entry : fileActions.entrySet()) {
             String conflictLabel = switch(entry.getValue()) {
                 case DOWNLOAD -> "Remote is Ahead";
                 case UPLOAD -> "Local is Ahead";

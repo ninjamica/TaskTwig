@@ -10,6 +10,7 @@ module ninjamica.tasktwig.tasktwig {
     requires dropbox.core.sdk;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.fontawesome6;
+    requires com.gluonhq.attach.storage;
 
 
     opens ninjamica.tasktwig.ui to javafx.fxml;

@@ -55,6 +55,18 @@
         </dependency>
 
         <dependency>
+            <groupId>com.gluonhq.attach</groupId>
+            <artifactId>display</artifactId>
+            <version>4.0.24</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.gluonhq.attach</groupId>
+            <artifactId>storage</artifactId>
+            <version>4.0.24</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.controlsfx</groupId>
             <artifactId>controlsfx</artifactId>
             <version>11.2.3</version>
@@ -138,6 +150,17 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.gluonhq</groupId>
+                <artifactId>gluonfx-maven-plugin</artifactId>
+                <version>1.0.28</version>
+                <configuration>
+                    <mainClass>ninjamica.tasktwig.ui.TaskTwigApplication</mainClass>
+                    <attachList>
+                        <list>display,storage</list>
+                    </attachList>
+                </configuration>
             </plugin>
         </plugins>
     </build>
