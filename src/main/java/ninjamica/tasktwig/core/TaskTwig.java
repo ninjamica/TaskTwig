@@ -5,6 +5,7 @@ import com.dropbox.core.json.JsonReader;
 import com.dropbox.core.oauth.DbxCredential;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.WriteMode;
+import com.gluonhq.attach.settings.SettingsService;
 import javafx.application.Platform;
 import javafx.beans.Observable;
 import javafx.beans.binding.ObjectExpression;
@@ -58,24 +59,25 @@ public class TaskTwig implements Serializable {
 
         public File file() {
             if (file == null) {
-                file = new File(dataDir, fileSubPath);
+                file = new File(storageDir, fileSubPath);
             }
             return file;
         }
     }
 
     private final TwigFile DBX_DIR = new TwigFile("/dbx");
-    private final TwigFile DBX_CRED_FILE = new TwigFile("/credential.app");
-    private final TwigFile COMMIT_FILE = new TwigFile("/commit.json");
-    private final TwigFile LAST_SYNCED_COMMIT_FILE = new TwigFile("/last_synced_commit.json");
+    private final TwigFile DBX_CRED_FILE = new TwigFile("/dbx/credential.app");
+    private final TwigFile COMMIT_FILE = new TwigFile("/data/commit.json");
+    private final TwigFile LAST_SYNCED_COMMIT_FILE = new TwigFile("/dbx/last_synced_commit.json");
     private final TwigFile CONFIG_FILE = new TwigFile("/config.json");
 
-    private final TwigFile SLEEP_FILE = new TwigFile("/sleep.json");
-    private final TwigFile WORKOUT_FILE = new TwigFile("/workout.json");
-    private final TwigFile TASK_FILE = new TwigFile("/task.json");
-    private final TwigFile ROUTINE_FILE = new TwigFile("/routine.json");
-    private final TwigFile LIST_FILE = new TwigFile("/list.json");
-    private final TwigFile JOURNAL_FILE = new TwigFile("/journal.json");
+    private final TwigFile DATA_DIR = new TwigFile("/data");
+    private final TwigFile SLEEP_FILE = new TwigFile("/data/sleep.json");
+    private final TwigFile WORKOUT_FILE = new TwigFile("/data/workout.json");
+    private final TwigFile TASK_FILE = new TwigFile("/data/task.json");
+    private final TwigFile ROUTINE_FILE = new TwigFile("/data/routine.json");
+    private final TwigFile LIST_FILE = new TwigFile("/data/list.json");
+    private final TwigFile JOURNAL_FILE = new TwigFile("/data/journal.json");
 
     public enum TwigDataFile {
         SLEEP,
@@ -100,7 +102,8 @@ public class TaskTwig implements Serializable {
     private static boolean notFXThread = false;
     private static final ReadOnlyObjectWrapper<LocalDate> today = new ReadOnlyObjectWrapper<>(null);
 
-    private final File dataDir;
+    private final SettingsService settingsService;
+    private final File storageDir;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private ObservableMap<LocalDate, Sleep> sleepRecords;
@@ -124,17 +127,18 @@ public class TaskTwig implements Serializable {
     private CommitData lastSyncedCommit;
 
 
-    public TaskTwig(File dataStorageDir) {
+    public TaskTwig(SettingsService settingsService, File dataStorageDir) {
         TaskTwig.instance = this;
-        dataDir = dataStorageDir;
+        this.settingsService = settingsService;
+        storageDir = dataStorageDir;
 
-        if (!dataDir.exists())
-            dataDir.mkdirs();
+        if (!DATA_DIR.file().exists())
+            DATA_DIR.file().mkdirs();
 
         if (!DBX_DIR.file().exists())
             DBX_DIR.file().mkdirs();
 
-        readConfigFile();
+        readSettings();
         readDataFiles();
         lastSyncedCommit = readLastSyncedCommitData();
 
@@ -142,27 +146,32 @@ public class TaskTwig implements Serializable {
             System.out.println(oldStart + " -> " + newStart);
             updateToday();
             if (newStart != oldStart)
-                writeConfigFile();
+                settingsService.store("dayStart", newStart.toString());
+//                writeConfigFile();
         });
         nightStart.subscribe((oldStart, newStart) -> {
             System.out.println(oldStart + " -> " + newStart);
             if (newStart != oldStart)
-                writeConfigFile();
+                settingsService.store("nightStart", newStart.toString());
+//                writeConfigFile();
         });
         autoSync.subscribe((oldVal, newVal) -> {
             System.out.println(oldVal + " -> " + newVal);
             if (newVal != oldVal)
-                writeConfigFile();
+                settingsService.store("autoSync", newVal.toString());
+//                writeConfigFile();
         });
         syncInterval.subscribe((oldVal, newVal) -> {
             System.out.println(oldVal + " -> " + newVal);
             if (!Objects.equals(newVal, oldVal))
-                writeConfigFile();
+                settingsService.store("syncInterval", newVal.toString());
+//                writeConfigFile();
         });
         visualTheme.subscribe((oldVal, newVal) -> {
             System.out.println(oldVal + " -> " + newVal);
             if (!Objects.equals(newVal, oldVal))
-                writeConfigFile();
+                settingsService.store("visualTheme", newVal);
+//                writeConfigFile();
         });
     }
 
@@ -338,6 +347,33 @@ public class TaskTwig implements Serializable {
         return journalMap.get(today());
     }
 
+    private void readSettings() {
+        if (settingsService.retrieve("settingsVersion") == null) {
+            readConfigFile();
+            writeAllSettings();
+        }
+        else {
+            switch (Integer.parseInt(settingsService.retrieve("settingsVersion"))) {
+                case 5 -> {
+                    setVisualTheme(settingsService.retrieve("theme"));
+                    syncInterval.set(Integer.parseInt(settingsService.retrieve("syncInterval")));
+                    autoSync.set(Boolean.parseBoolean(settingsService.retrieve("autoSync")));
+                    dayStart.set(LocalTime.parse(settingsService.retrieve("dayStart")));
+                    nightStart.set(LocalTime.parse(settingsService.retrieve("nightStart")));
+                }
+            }
+        }
+    }
+
+    private void writeAllSettings() {
+        settingsService.store("settingsVersion", Integer.toString(CONFIG_VERSION));
+        settingsService.store("dayStart", dayStart.get().toString());
+        settingsService.store("nightStart", nightStart.get().toString());
+        settingsService.store("autoSync", autoSync.getValue().toString());
+        settingsService.store("syncInterval", syncInterval.getValue().toString());
+        settingsService.store("theme", visualTheme.get());
+    }
+
     private void readConfigFile() {
         try (JsonParser parser = mapper.createParser(CONFIG_FILE.file())) {
             parser.nextToken();
@@ -441,21 +477,21 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private void writeConfigFile() {
-        System.out.println("Writing config file");
-        try (JsonGenerator generator = mapper.createGenerator(CONFIG_FILE.file(), JsonEncoding.UTF8)) {
-            generator.writeStartObject();
-
-            generator.writeNumberProperty("version", CONFIG_VERSION);
-            generator.writePOJOProperty("dayStart", dayStart.get());
-            generator.writePOJOProperty("nightStart", nightStart.get());
-            generator.writeBooleanProperty("autoSync", autoSync.get());
-            generator.writeNumberProperty("syncInterval", syncInterval.get());
-            generator.writeStringProperty("theme", visualTheme.get());
-
-            generator.writeEndObject();
-        }
-    }
+//    private void writeConfigFile() {
+//        System.out.println("Writing config file");
+//        try (JsonGenerator generator = mapper.createGenerator(CONFIG_FILE.file(), JsonEncoding.UTF8)) {
+//            generator.writeStartObject();
+//
+//            generator.writeNumberProperty("version", CONFIG_VERSION);
+//            generator.writePOJOProperty("dayStart", dayStart.get());
+//            generator.writePOJOProperty("nightStart", nightStart.get());
+//            generator.writeBooleanProperty("autoSync", autoSync.get());
+//            generator.writeNumberProperty("syncInterval", syncInterval.get());
+//            generator.writeStringProperty("theme", visualTheme.get());
+//
+//            generator.writeEndObject();
+//        }
+//    }
 
     private void readDataFiles() {
         // Parse sleep records

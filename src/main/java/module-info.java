@@ -11,6 +11,7 @@ module ninjamica.tasktwig.tasktwig {
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.fontawesome6;
     requires com.gluonhq.attach.storage;
+    requires com.gluonhq.attach.settings;
 
 
     opens ninjamica.tasktwig.ui to javafx.fxml;

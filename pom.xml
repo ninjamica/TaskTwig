@@ -56,10 +56,9 @@
 
         <dependency>
             <groupId>com.gluonhq.attach</groupId>
-            <artifactId>display</artifactId>
+            <artifactId>settings</artifactId>
             <version>4.0.24</version>
         </dependency>
-
         <dependency>
             <groupId>com.gluonhq.attach</groupId>
             <artifactId>storage</artifactId>
@@ -158,7 +157,7 @@
                 <configuration>
                     <mainClass>ninjamica.tasktwig.ui.TaskTwigApplication</mainClass>
                     <attachList>
-                        <list>display,storage</list>
+                        <list>settings,storage</list>
                     </attachList>
                 </configuration>
             </plugin>

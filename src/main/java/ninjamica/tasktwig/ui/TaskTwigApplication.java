@@ -1,6 +1,7 @@
 package ninjamica.tasktwig.ui;
 
 import atlantafx.base.theme.Theme;
+import com.gluonhq.attach.settings.SettingsService;
 import com.gluonhq.attach.storage.StorageService;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -15,9 +16,10 @@ public class TaskTwigApplication extends Application {
     @Override
     public void start(Stage stage) {
 
+        SettingsService settingsService = SettingsService.create().orElseThrow();
         StorageService storageService = StorageService.create().orElseThrow();
         File dataDir = storageService.getPrivateStorage().orElseThrow();
-        TaskTwig taskTwig = new TaskTwig(dataDir);
+        TaskTwig taskTwig = new TaskTwig(settingsService, dataDir);
 
         TaskTwigController controller = new TaskTwigController(this, taskTwig);
         Scene scene = new Scene(controller.getRoot());
