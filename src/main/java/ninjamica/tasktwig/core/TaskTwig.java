@@ -14,6 +14,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
+import javafx.scene.image.Image;
 import tools.jackson.core.*;
 import tools.jackson.core.exc.JacksonIOException;
 import tools.jackson.databind.JsonNode;
@@ -65,12 +66,14 @@ public class TaskTwig implements Serializable {
         }
     }
 
+    @SuppressWarnings("FieldCanBeLocal")
     private final TwigFile DBX_DIR = new TwigFile("/dbx");
     private final TwigFile DBX_CRED_FILE = new TwigFile("/dbx/credential.app");
     private final TwigFile COMMIT_FILE = new TwigFile("/data/commit.json");
     private final TwigFile LAST_SYNCED_COMMIT_FILE = new TwigFile("/dbx/last_synced_commit.json");
     private final TwigFile CONFIG_FILE = new TwigFile("/config.json");
 
+    @SuppressWarnings("FieldCanBeLocal")
     private final TwigFile DATA_DIR = new TwigFile("/data");
     private final TwigFile SLEEP_FILE = new TwigFile("/data/sleep.json");
     private final TwigFile WORKOUT_FILE = new TwigFile("/data/workout.json");
@@ -336,10 +339,6 @@ public class TaskTwig implements Serializable {
 
     public ReadOnlyObjectProperty<DbxClientV2> dbxClient() {
         return dbxClient;
-    }
-
-    public String getDbxAccountName() throws DbxException, NullPointerException {
-        return dbxClient.get().users().getCurrentAccount().getName().getDisplayName();
     }
 
     public Journal todaysJournal() {
@@ -818,7 +817,7 @@ public class TaskTwig implements Serializable {
     }
 
     private CommitData genLiveCommitData() {
-        MessageDigest digest = null;
+        MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-256");
 
@@ -909,7 +908,7 @@ public class TaskTwig implements Serializable {
     }
 
     private CommitData readDbxCommitData() {
-        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder(COMMIT_FILE.fileSubPath).start();
+        try (var remoteCommitFile = dbxClient.get().files().downloadBuilder("/" + COMMIT_FILE.file().getName()).start();
              JsonParser parser = mapper.createParser(remoteCommitFile.getInputStream()))
         {
             return readCommitData(parser);
@@ -1128,6 +1127,18 @@ public class TaskTwig implements Serializable {
         Platform.runLater(() -> dbxClient.set(new DbxClientV2(config, credential)));
     }
 
+    public String getDbxAccountName() throws DbxException, NullPointerException {
+        return dbxClient.get().users().getCurrentAccount().getName().getDisplayName();
+    }
+
+    public Image getDbxAccountImage() throws DbxException {
+        String iconUrl = dbxClient.get().users().getCurrentAccount().getProfilePhotoUrl();
+        if (iconUrl != null)
+            return new Image(iconUrl, 48, 48, true, true, true);
+        else
+            return null;
+    }
+
     public void dbxDownloadFile(TwigFile dataFile) throws IOException, DbxException {
         try (OutputStream fileStream = new FileOutputStream(dataFile.file())) {
             dbxClient.get().files().downloadBuilder("/" + dataFile.file().getName()).download(fileStream);
@@ -1150,7 +1161,7 @@ public class TaskTwig implements Serializable {
 
     public void dbxUploadCommitFile(TwigFile commitFile) throws IOException, DbxException {
         try (InputStream fileStream = new FileInputStream(commitFile.file())) {
-            dbxClient.get().files().uploadBuilder("/commit.json").withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
+            dbxClient.get().files().uploadBuilder("/" + COMMIT_FILE.file().getName()).withMode(WriteMode.OVERWRITE).uploadAndFinish(fileStream);
         }
         catch (IOException | DbxException e) {
             System.err.println("Error uploading file " + commitFile.file().getName() + " as remote commit file: " + e.getMessage());

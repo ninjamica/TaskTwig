@@ -5,6 +5,7 @@ import atlantafx.base.controls.Calendar;
 import atlantafx.base.theme.*;
 import atlantafx.base.util.Animations;
 import com.dropbox.core.DbxException;
+import com.gluonhq.attach.browser.BrowserService;
 import javafx.animation.Animation;
 import javafx.animation.Interpolator;
 import javafx.animation.RotateTransition;
@@ -33,8 +34,10 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane.TabClosingPolicy;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.*;
 import javafx.scene.layout.*;
+import javafx.scene.shape.Circle;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -52,6 +55,8 @@ import org.kordamp.ikonli.fontawesome6.FontAwesomeBrands;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 import org.kordamp.ikonli.javafx.FontIcon;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.time.DayOfWeek;
@@ -103,6 +108,7 @@ public class TaskTwigController {
     private TimeInput settingsNightStartInput;
     private Spinner<Integer> settingsIntervalSpinner;
     private Label settingsDbxName;
+    private ImageView settingsDbxIcon;
     private Button settingsDbxButton;
 
     private Button syncButton;
@@ -131,6 +137,7 @@ public class TaskTwigController {
     private Stage stage;
     private Subscription subscriptions = Subscription.EMPTY;
     private final SaveSyncService backgroundService;
+    private final BrowserService browser = BrowserService.create().orElseThrow();
 
     private final XYChart.Series<String, Number> sleepLenChartData = new XYChart.Series<>();
     private final XYChart.Series<String, Number> sleepStartChartData = new XYChart.Series<>();
@@ -1365,12 +1372,17 @@ public class TaskTwigController {
             new FontIcon(FontAwesomeBrands.DROPBOX)
         );
         settingsDbxName = new Label("dbx account here");
+        settingsDbxIcon = new ImageView();
+        settingsDbxIcon.setClip(new Circle(24, 24, 24));
         settingsDbxButton = new Button("Dbx Connect Button");
         settingsDbxButton.setOnAction(this::onDbxButton);
-        VBox dbxVBox = new VBox(settingsDbxName, settingsDbxButton);
-        dbxVBox.setSpacing(10);
-        dbxVBox.setAlignment(Pos.CENTER);
-        dbxTile.setAction(dbxVBox);
+
+        GridPane dbxAccountPane = new GridPane(10, 10);
+        dbxAccountPane.add(settingsDbxIcon, 0, 0, 1, 2);
+        dbxAccountPane.add(settingsDbxName, 1, 0);
+        dbxAccountPane.add(settingsDbxButton, 1, 1);
+        dbxAccountPane.setAlignment(Pos.CENTER);
+        dbxTile.setAction(dbxAccountPane);
         dbxTile.setActionHandler(settingsDbxButton::fire);
 
         Tile themeTile = new Tile(
@@ -1841,6 +1853,7 @@ public class TaskTwigController {
             settingsDbxButton.getStyleClass().add(Styles.DANGER);
             try {
                 settingsDbxName.setText(twig.getDbxAccountName());
+                settingsDbxIcon.setImage(twig.getDbxAccountImage());
             }
             catch (DbxException e) {
                 System.err.println("Failed to render dbx account name: " + e.getMessage());
@@ -1850,54 +1863,89 @@ public class TaskTwigController {
 
     private void dbxAuthorize() {
         String authUrl = twig.genDbxAuthUrl();
-
-        Dialog<String> dialog = new Dialog<>() {
-            {
-                getDialogPane().getStyleClass().add("confirmation");
-                setHeaderText("Open the following URL and paste the provided code below");
-
-                Hyperlink url = new Hyperlink(authUrl);
-                url.setOnAction(event -> application.getHostServices().showDocument(authUrl));
-                url.setMaxWidth(600);
-                url.setWrapText(true);
-
-                TextField codeInput = new TextField();
-                codeInput.setPromptText("Enter code here");
-
-                VBox contentBox = new VBox(url, codeInput);
-                contentBox.setAlignment(Pos.TOP_CENTER);
-                contentBox.setSpacing(15);
-
-                getDialogPane().setContent(contentBox);
-                getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
-                setWidth(600);
-
-                setResultConverter(buttonType -> {
-                    if (buttonType == ButtonType.OK) {
-                        return codeInput.getText();
-                    }
-                    return null;
-                });
-            }
-        };
-
-        dialog.showAndWait().ifPresent(code -> {
+        Hyperlink url = new Hyperlink(authUrl);
+        url.setOnAction(event -> {
             try {
-                detachTwigData();
-                twig.authDbxFromCode(code);
-                onDbxButton();
-            }
-            catch (DbxException e) {
-                createAlert(AlertType.ERROR,
-                        "Authentication Error",
-                        "Error Authenticating, code not accepted",
-                        "Make sure you've entered the code properly and try again.",
-                        ButtonType.OK).showAndWait();
-            }
-            finally {
-                attachTwigData();
+                browser.launchExternalBrowser(authUrl);
+            } catch (IOException | URISyntaxException e) {
+                throw new RuntimeException(e);
             }
         });
+        url.setMaxWidth(600);
+        url.setWrapText(true);
+
+        TextField codeInput = new TextField();
+        codeInput.setPromptText("Enter code here");
+
+        VBox contentBox = new VBox(url, codeInput);
+        contentBox.setAlignment(Pos.TOP_CENTER);
+        contentBox.setSpacing(15);
+
+        AlertModalBox dialog = new AlertModalBox(
+                modalPane,
+                "Connect Dropbox Account",
+                "Open the following URL and paste the provided code below:",
+                contentBox,
+                true,
+                buttonType -> {
+                    if (buttonType == ModalButtonType.OK) {
+                        try {
+                            detachTwigData();
+                            twig.authDbxFromCode(codeInput.getText());
+                        } catch (DbxException e) {
+                            new AlertModalBox(
+                                    modalPane,
+                                    "Authentication Error",
+                                    "Error Authenticating, code not accepted",
+                                    new Label("Make sure you've entered the code properly and try again."),
+                                    false, null, ModalButtonType.OK
+                            ).show();
+                        } finally {
+                            attachTwigData();
+                        }
+                    }
+                },
+                ModalButtonType.OK, ModalButtonType.CANCEL
+        );
+        dialog.show();
+
+//        Dialog<String> dialog = new Dialog<>() {
+//            {
+//                getDialogPane().getStyleClass().add("confirmation");
+//                setHeaderText("Open the following URL and paste the provided code below");
+//
+//
+//
+//                getDialogPane().setContent(contentBox);
+//                getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+//                setWidth(600);
+//
+//                setResultConverter(buttonType -> {
+//                    if (buttonType == ButtonType.OK) {
+//                        return codeInput.getText();
+//                    }
+//                    return null;
+//                });
+//            }
+//        };
+//
+//        dialog.showAndWait().ifPresent(code -> {
+//            try {
+//                detachTwigData();
+//                twig.authDbxFromCode(code);
+//                onDbxButton();
+//            }
+//            catch (DbxException e) {
+//                createAlert(AlertType.ERROR,
+//                        "Authentication Error",
+//                        "Error Authenticating, code not accepted",
+//                        "Make sure you've entered the code properly and try again.",
+//                        ButtonType.OK).showAndWait();
+//            }
+//            finally {
+//                attachTwigData();
+//            }
+//        });
     }
 
     public void onDbxButton() {
@@ -1975,12 +2023,6 @@ public class TaskTwigController {
     }
 
     private boolean userConfirmSave() {
-//        Alert alert = createAlert(AlertType.CONFIRMATION,
-//                "Sync data?",
-//                "Sync data before exiting?",
-//                "Some data is saved locally but not synced with Dropbox, would you like to sync before exiting?",
-//                ButtonType.YES, ButtonType.NO);
-//
         AlertModalBox alert = AlertModalBox.yesNoAlert(
                 modalPane,
                 "Sync data before exiting?",

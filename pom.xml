@@ -64,6 +64,11 @@
             <artifactId>storage</artifactId>
             <version>4.0.24</version>
         </dependency>
+        <dependency>
+            <groupId>com.gluonhq.attach</groupId>
+            <artifactId>browser</artifactId>
+            <version>4.0.24</version>
+        </dependency>
 
         <dependency>
             <groupId>org.controlsfx</groupId>
@@ -157,7 +162,7 @@
                 <configuration>
                     <mainClass>ninjamica.tasktwig.ui.TaskTwigApplication</mainClass>
                     <attachList>
-                        <list>settings,storage</list>
+                        <list>settings, storage, browser</list>
                     </attachList>
                 </configuration>
             </plugin>
