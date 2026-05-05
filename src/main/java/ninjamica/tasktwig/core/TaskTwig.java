@@ -524,6 +524,7 @@ public class TaskTwig implements Serializable {
             parseJsonMap(sleepMap, parser, LocalDate::parse, node -> new Sleep(node, version));
         }
         catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             this.sleepStart.setValue(null);
             sleepMap.clear();
         }
@@ -555,6 +556,7 @@ public class TaskTwig implements Serializable {
             parser.nextToken();
             parseJsonList(this.workoutRecords, parser, node -> new Workout(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             this.exerciseList.clear();
             this.workoutStart.setValue(null);
             this.workoutRecords.clear();
@@ -566,6 +568,7 @@ public class TaskTwig implements Serializable {
         try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
             Task.parseDataFile(parser, taskList, taskCategoryList);
         } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             this.taskList.clear();
         }
 
@@ -580,6 +583,7 @@ public class TaskTwig implements Serializable {
             parser.nextToken();
             parseJsonList(this.twigLists, parser, node -> new TwigList(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             this.twigLists.clear();
         }
 
@@ -594,6 +598,7 @@ public class TaskTwig implements Serializable {
             parser.nextToken();
             parseJsonList(this.routineList, parser, node -> new Routine(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             this.routineList.clear();
         }
 
@@ -608,6 +613,7 @@ public class TaskTwig implements Serializable {
             parser.nextToken();
             parseJsonMap(journals, parser, LocalDate::parse, node -> new Journal(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
             journals.clear();
         }
         this.journalMap = FXCollections.observableMap(journals);

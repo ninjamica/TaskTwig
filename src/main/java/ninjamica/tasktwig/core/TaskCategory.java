@@ -14,10 +14,22 @@ import tools.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @JsonIncludeProperties({"name", "paint"})
 public class TaskCategory {
+
+    private static final Map<String, TaskCategory> categoryMap = new HashMap<>();
+
+    static TaskCategory getCategoryFromName(String name) {
+        return categoryMap.get(name);
+    }
+
+    static void clearCategoryMap() {
+        categoryMap.clear();
+    }
 
     private final StringProperty name = new SimpleStringProperty();
     private final ObjectProperty<Paint> paint = new SimpleObjectProperty<>();
@@ -26,6 +38,7 @@ public class TaskCategory {
     public TaskCategory(String name, Paint paint) {
         this.name.set(name);
         this.paint.set(paint);
+        categoryMap.put(name, this);
     }
     public TaskCategory(JsonNode node, int version) {
         String name;

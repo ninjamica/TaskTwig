@@ -68,9 +68,11 @@ public class Task {
         this(name, null, interval, null, priority);
     }
 
-    public Task(JsonNode node, Map<String, TaskCategory> categoryMap, int version) {
-        System.out.println("Parsing node for new Task: " + node.toString());
+    public Task(JsonNode node, int version) {
+        this(node, version, true);
+    }
 
+    public Task(JsonNode node, int version, boolean isParent) {
         String name;
         TaskCategory category = null;
         TaskInterval interval;
@@ -82,8 +84,8 @@ public class Task {
         switch (version) {
             case 9:
                 JsonNode categoryNode = node.get("category");
-                if (categoryNode != null && categoryMap != null)
-                    category = categoryMap.get(categoryNode.asString());
+                if (isParent && categoryNode != null)
+                    category = TaskCategory.getCategoryFromName(categoryNode.asString());
             case 8:
                 JsonNode expandedNode = node.get("expanded");
                 if (expandedNode != null)
@@ -103,17 +105,16 @@ public class Task {
                 JsonNode childrenNode = node.get("children");
                 if (childrenNode != null) {
                     for (JsonNode child : childrenNode) {
-                        children.add(new Task(child, null, version));
+                        children.add(new Task(child, version, false));
                     }
                 }
                 break;
 
             default:
-                System.err.println("Invalid version: " + version);
+                System.err.println("Unsupported Task version: " + version);
                 throw new TaskTwig.TwigJsonVersionException("Unsupported Task version: " + version);
         }
 
-        System.out.println("Finished making task");
         this(name, category, interval, dueTime, priority, children, expanded);
     }
 
@@ -123,23 +124,16 @@ public class Task {
         TaskTwig.requireJsonProperty(parser, "version");
         int version =  parser.nextIntValue(0);
 
-        Map<String, TaskCategory> categoryMap = new HashMap<>();
-
         if (version >= 9) {
+            TaskCategory.clearCategoryMap();
             TaskTwig.requireJsonProperty(parser, "categories");
             parser.nextToken();
-            TaskTwig.parseJsonList(categoryList, parser, node -> {
-                TaskCategory category = new TaskCategory(node, version);
-                categoryMap.put(category.getName(), category);
-                System.out.println(category.getName());
-                return category;
-            });
-            System.out.println(categoryMap);
+            TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
         }
 
         TaskTwig.requireJsonProperty(parser, "tasks");
         parser.nextToken();
-        TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, categoryMap, version));
+        TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, version));
     }
 
     public StringProperty nameProperty() {
