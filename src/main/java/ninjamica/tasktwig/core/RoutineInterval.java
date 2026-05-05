@@ -214,7 +214,7 @@ public sealed interface RoutineInterval {
 
         @JsonGetter("interval")
         public int getInterval() {
-            return TaskTwig.callWithFXSafety(intervalDays::get);
+            return TaskTwig.supplyWithFXSafety(intervalDays::get);
         }
 
         public BooleanProperty repeatFromLastDoneProperty() {
@@ -223,7 +223,7 @@ public sealed interface RoutineInterval {
 
         @JsonGetter("fromLastDone")
         public boolean isRepeatFromLastDone() {
-            return TaskTwig.callWithFXSafety(repeatFromLastDone::get);
+            return TaskTwig.supplyWithFXSafety(repeatFromLastDone::get);
         }
 
         @JsonGetter("lastDone")
@@ -317,7 +317,7 @@ public sealed interface RoutineInterval {
 
         @JsonGetter("bitmap")
         public byte getBitmap() {
-            return TaskTwig.callWithFXSafety(dayOfWeekBitmap::get);
+            return TaskTwig.supplyWithFXSafety(dayOfWeekBitmap::get);
         }
 
         public BooleanProperty keepTillDoneProperty() {
@@ -326,7 +326,7 @@ public sealed interface RoutineInterval {
 
         @JsonGetter("keepTillDone")
         public boolean isKeepTillDone() {
-            return TaskTwig.callWithFXSafety(keepTillDone::get);
+            return TaskTwig.supplyWithFXSafety(keepTillDone::get);
         }
 
         @JsonGetter("lastDone")

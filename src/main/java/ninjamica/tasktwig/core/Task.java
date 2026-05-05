@@ -9,21 +9,23 @@ import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import org.jetbrains.annotations.Nullable;
+import tools.jackson.core.JsonParser;
 import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
-@JsonIncludeProperties({"name", "interval", "dueTime", "priority", "children", "expanded"})
-@JsonPropertyOrder({"name", "interval", "dueTime", "priority", "children", "expanded"})
+@JsonIncludeProperties({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
+@JsonPropertyOrder({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
 public class Task {
-    public static final int VERSION = 8;
+    public static final int VERSION = 9;
     private final StringProperty name = new SimpleStringProperty();
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    private final ObjectProperty<TaskCategory> category = new SimpleObjectProperty<>();
     private final ObjectProperty<TaskInterval> interval = new SimpleObjectProperty<>();
     private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
     private final IntegerProperty priority = new SimpleIntegerProperty();
@@ -35,14 +37,15 @@ public class Task {
     private final BooleanProperty expanded = new SimpleBooleanProperty();
 
 
-    public Task(String name, TaskInterval interval, LocalTime dueTime, int priority, List<Task> children, boolean expanded) {
-        this(name, interval, dueTime, priority);
+    public Task(String name, @Nullable TaskCategory category, TaskInterval interval, @Nullable LocalTime dueTime, int priority, List<Task> children, boolean expanded) {
+        this(name, category, interval, dueTime, priority);
         this.children.addAll(children);
         this.expanded.set(expanded);
     }
 
-    public Task(String name, TaskInterval interval, LocalTime dueTime, int priority) {
+    public Task(String name, @Nullable TaskCategory category, TaskInterval interval, @Nullable LocalTime dueTime, int priority) {
         this.name.set(name);
+        this.category.set(category);
         this.interval.set(interval);
         this.dueTime.set(dueTime);
         this.priority.set(priority);
@@ -62,11 +65,14 @@ public class Task {
     }
 
     public Task(String name, TaskInterval interval, int priority) {
-        this(name, interval, null, priority);
+        this(name, null, interval, null, priority);
     }
 
-    public Task(JsonNode node, int version) {
+    public Task(JsonNode node, Map<String, TaskCategory> categoryMap, int version) {
+        System.out.println("Parsing node for new Task: " + node.toString());
+
         String name;
+        TaskCategory category = null;
         TaskInterval interval;
         LocalTime dueTime = null;
         int priority = 0;
@@ -74,6 +80,10 @@ public class Task {
         boolean expanded = false;
 
         switch (version) {
+            case 9:
+                JsonNode categoryNode = node.get("category");
+                if (categoryNode != null && categoryMap != null)
+                    category = categoryMap.get(categoryNode.asString());
             case 8:
                 JsonNode expandedNode = node.get("expanded");
                 if (expandedNode != null)
@@ -93,16 +103,43 @@ public class Task {
                 JsonNode childrenNode = node.get("children");
                 if (childrenNode != null) {
                     for (JsonNode child : childrenNode) {
-                        children.add(new Task(child, version));
+                        children.add(new Task(child, null, version));
                     }
                 }
                 break;
 
             default:
+                System.err.println("Invalid version: " + version);
                 throw new TaskTwig.TwigJsonVersionException("Unsupported Task version: " + version);
         }
 
-        this(name, interval, dueTime, priority, children, expanded);
+        System.out.println("Finished making task");
+        this(name, category, interval, dueTime, priority, children, expanded);
+    }
+
+    public static void parseDataFile(JsonParser parser, List<Task> taskList, List<TaskCategory> categoryList) {
+        parser.nextToken();
+
+        TaskTwig.requireJsonProperty(parser, "version");
+        int version =  parser.nextIntValue(0);
+
+        Map<String, TaskCategory> categoryMap = new HashMap<>();
+
+        if (version >= 9) {
+            TaskTwig.requireJsonProperty(parser, "categories");
+            parser.nextToken();
+            TaskTwig.parseJsonList(categoryList, parser, node -> {
+                TaskCategory category = new TaskCategory(node, version);
+                categoryMap.put(category.getName(), category);
+                System.out.println(category.getName());
+                return category;
+            });
+            System.out.println(categoryMap);
+        }
+
+        TaskTwig.requireJsonProperty(parser, "tasks");
+        parser.nextToken();
+        TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, categoryMap, version));
     }
 
     public StringProperty nameProperty() {
@@ -111,7 +148,21 @@ public class Task {
 
     @JsonGetter("name")
     public String getName() {
-        return TaskTwig.callWithFXSafety(name::get);
+        return TaskTwig.supplyWithFXSafety(name::get);
+    }
+
+    public ObjectProperty<TaskCategory> categoryProperty() {
+        return category;
+    }
+
+    public TaskCategory getCategory() {
+        return TaskTwig.supplyWithFXSafety(category::get);
+    }
+
+    @JsonGetter("category")
+    public String getCategoryName() {
+        TaskCategory category = getCategory();
+        return category == null ? null : category.getName();
     }
 
     public ObjectProperty<TaskInterval> intervalProperty() {
@@ -120,7 +171,7 @@ public class Task {
 
     @JsonGetter("interval")
     public TaskInterval getInterval() {
-        return TaskTwig.callWithFXSafety(interval::get);
+        return TaskTwig.supplyWithFXSafety(interval::get);
     }
 
     public ObjectProperty<LocalTime> dueTimeProperty() {
@@ -129,7 +180,7 @@ public class Task {
 
     @JsonGetter("dueTime")
     public LocalTime getDueTime() {
-        return TaskTwig.callWithFXSafety(dueTime::get);
+        return TaskTwig.supplyWithFXSafety(dueTime::get);
     }
 
     public IntegerProperty priorityProperty() {
@@ -138,7 +189,7 @@ public class Task {
 
     @JsonGetter("priority")
     public int getPriority() {
-        return TaskTwig.callWithFXSafety(priority::get);
+        return TaskTwig.supplyWithFXSafety(priority::get);
     }
 
     public ObservableList<Task> getChildren() {
@@ -148,7 +199,7 @@ public class Task {
     @JsonGetter("children")
     public List<Task> getChildrenJson() {
         if (TaskTwig.notFxThread())
-            return TaskTwig.callWithFXSafety(() -> new ArrayList<>(children));
+            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(children));
         else
             return children;
     }
@@ -159,7 +210,7 @@ public class Task {
 
     @JsonGetter("expanded")
     public boolean isExpanded() {
-        return TaskTwig.callWithFXSafety(expanded::get);
+        return TaskTwig.supplyWithFXSafety(expanded::get);
     }
 
     public ObservableValue<Boolean> doneObservable() {
@@ -214,6 +265,11 @@ public class Task {
 
     public void hashContents(MessageDigest digest) {
         digest.update(getName().getBytes(StandardCharsets.UTF_8));
+
+        TaskCategory category = getCategory();
+        if (category != null)
+            digest.update(category.getName().getBytes(StandardCharsets.UTF_8));
+
         getInterval().hashContents(digest);
 
         LocalTime dueTime = getDueTime();

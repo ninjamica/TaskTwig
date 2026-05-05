@@ -54,17 +54,17 @@ public record Routine(StringProperty name, ObjectProperty<LocalTime> dueTime, Ob
 
     @JsonGetter("name")
     public String getName() {
-        return TaskTwig.callWithFXSafety(name::get);
+        return TaskTwig.supplyWithFXSafety(name::get);
     }
 
     @JsonGetter("dueAt")
     public LocalTime getDueTime() {
-        return TaskTwig.callWithFXSafety(dueTime::get);
+        return TaskTwig.supplyWithFXSafety(dueTime::get);
     }
 
     @JsonGetter("interval")
     public RoutineInterval getInterval() {
-        return TaskTwig.callWithFXSafety(interval::get);
+        return TaskTwig.supplyWithFXSafety(interval::get);
     }
 
     public boolean isDoneToday() {

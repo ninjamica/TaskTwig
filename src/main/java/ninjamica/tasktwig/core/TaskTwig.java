@@ -113,6 +113,7 @@ public class TaskTwig implements Serializable {
     private ObservableList<Workout> workoutRecords;
     private ObservableList<Exercise> exerciseList;
     private ObservableList<Task> taskList;
+    private ObservableList<TaskCategory> taskCategoryList;
     private ObservableList<TwigList> twigLists;
     private ObservableList<Routine> routineList;
     private ObservableMap<LocalDate, Journal> journalMap;
@@ -244,7 +245,14 @@ public class TaskTwig implements Serializable {
         return TaskTwig.notFXThread;
     }
 
-    static <U> U callWithFXSafety(Supplier<U> supplier) {
+    static void runWithFXSafety(Runnable runnable) {
+        if (!Platform.isFxApplicationThread() && TaskTwig.notFXThread)
+            CompletableFuture.runAsync(runnable, Platform::runLater).join();
+        else
+            runnable.run();
+    }
+
+    static <U> U supplyWithFXSafety(Supplier<U> supplier) {
         if (!Platform.isFxApplicationThread() && TaskTwig.notFXThread)
             return CompletableFuture.supplyAsync(supplier, Platform::runLater).join();
         else
@@ -554,14 +562,9 @@ public class TaskTwig implements Serializable {
 
         // Parse tasks
         this.taskList = FXCollections.observableArrayList(task -> new Observable[] {task.intervalProperty(), task.inProgressObservable()});
+        this.taskCategoryList = FXCollections.observableArrayList();
         try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
-            parser.nextToken();
-            assertEqual(parser.nextName(), "version");
-            int version =  parser.nextIntValue(0);
-
-            assertEqual(parser.nextName(), "tasks");
-            parser.nextToken();
-            parseJsonList(this.taskList, parser, node -> new Task(node, version));
+            Task.parseDataFile(parser, taskList, taskCategoryList);
         } catch (TwigJsonAssertException | JacksonIOException e) {
             this.taskList.clear();
         }
@@ -651,6 +654,12 @@ public class TaskTwig implements Serializable {
 
                         generator.writeNumberProperty("version", Task.VERSION);
 
+                        generator.writeArrayPropertyStart("categories");
+                        for (TaskCategory category : taskCategoryList) {
+                            generator.writePOJO(category);
+                        }
+                        generator.writeEndArray();
+
                         generator.writeArrayPropertyStart("tasks");
                         for (Task task : taskList) {
                             generator.writePOJO(task);
@@ -715,12 +724,20 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private void assertEqual(Object actual, Object expected) throws TwigJsonAssertException {
+    static void assertEqual(Object actual, Object expected) throws TwigJsonAssertException {
         if (!expected.equals(actual))
             throw new TwigJsonAssertException("JSON parse encountered unexpected value. Expected: " + expected + ", actual: " + actual);
     }
 
-    private <T> void parseJsonList(List<T> list, JsonParser parser, Function<JsonNode, T> valueConstructor) {
+    static void requireJsonProperty(JsonParser parser, String name) throws TwigJsonAssertException {
+        if (!parser.nextName().equals(name)) {
+            System.err.println("Json parser expected property \"" + name + "\" but found: \"" + parser.currentToken().asString() + "\"");
+            throw new TwigJsonAssertException(
+                    "Json parser expected property \"" + name + "\" but found: \"" + parser.currentToken().asString() + "\"");
+        }
+    }
+
+    static <T> void parseJsonList(List<T> list, JsonParser parser, Function<JsonNode, T> valueConstructor) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_ARRAY) {
             JsonNode node = parser.readValueAsTree();
@@ -730,7 +747,7 @@ public class TaskTwig implements Serializable {
         }
     }
 
-    private <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser,
+    static <K, V> void parseJsonMap(Map<K, V> map, JsonParser parser,
                                      Function<String, K> keyParser, Function<JsonNode, V> valueConstructor) {
         parser.nextToken();
         while (parser.currentToken() != JsonToken.END_OBJECT) {
@@ -758,10 +775,10 @@ public class TaskTwig implements Serializable {
                 case SLEEP -> {
                     digest.update((byte) Sleep.VERSION);
 
-                    if (callWithFXSafety(this::isSleeping))
-                        digest.update(callWithFXSafety(sleepStart::get).toString().getBytes(StandardCharsets.UTF_8));
+                    if (supplyWithFXSafety(this::isSleeping))
+                        digest.update(supplyWithFXSafety(sleepStart::get).toString().getBytes(StandardCharsets.UTF_8));
 
-                    SortedMap<LocalDate, Sleep> sleepMap = callWithFXSafety(() -> new TreeMap<>(sleepRecords));
+                    SortedMap<LocalDate, Sleep> sleepMap = supplyWithFXSafety(() -> new TreeMap<>(sleepRecords));
                     for (Map.Entry<LocalDate, Sleep> sleepEntry : sleepMap.entrySet()) {
                         digest.update(sleepEntry.getKey().toString().getBytes(StandardCharsets.UTF_8));
                         sleepEntry.getValue().hashContents(digest);
@@ -770,42 +787,42 @@ public class TaskTwig implements Serializable {
                 case WORKOUT -> {
                     digest.update((byte) Workout.VERSION);
 
-                    if (callWithFXSafety(this::isWorkingOut))
-                        digest.update(callWithFXSafety(workoutStart::get).toString().getBytes(StandardCharsets.UTF_8));
+                    if (supplyWithFXSafety(this::isWorkingOut))
+                        digest.update(supplyWithFXSafety(workoutStart::get).toString().getBytes(StandardCharsets.UTF_8));
 
-                    for (Exercise exercise : callWithFXSafety(() -> new ArrayList<>(exerciseList))) {
+                    for (Exercise exercise : supplyWithFXSafety(() -> new ArrayList<>(exerciseList))) {
                         exercise.hashContents(digest);
                     }
 
-                    for (Workout workout : callWithFXSafety(() -> new ArrayList<>(workoutRecords))) {
+                    for (Workout workout : supplyWithFXSafety(() -> new ArrayList<>(workoutRecords))) {
                         workout.hashContents(digest);
                     }
                 }
                 case TASK ->  {
                     digest.update((byte) Task.VERSION);
 
-                    for (Task task : callWithFXSafety(() -> new ArrayList<>(taskList))) {
+                    for (Task task : supplyWithFXSafety(() -> new ArrayList<>(taskList))) {
                         task.hashContents(digest);
                     }
                 }
                 case ROUTINE -> {
                     digest.update((byte) Routine.VERSION);
 
-                    for (Routine routine : callWithFXSafety(() -> new ArrayList<>(routineList))) {
+                    for (Routine routine : supplyWithFXSafety(() -> new ArrayList<>(routineList))) {
                         routine.hashContents(digest);
                     }
                 }
                 case LIST -> {
                     digest.update((byte) TwigList.VERSION);
 
-                    for (TwigList twigList : callWithFXSafety(() -> new ArrayList<>(twigLists))) {
+                    for (TwigList twigList : supplyWithFXSafety(() -> new ArrayList<>(twigLists))) {
                         twigList.hashContents(digest);
                     }
                 }
                 case JOURNAL -> {
                     digest.update((byte) Journal.VERSION);
 
-                    SortedMap<LocalDate, Journal> journals = callWithFXSafety(() -> new TreeMap<>(journalMap));
+                    SortedMap<LocalDate, Journal> journals = supplyWithFXSafety(() -> new TreeMap<>(journalMap));
                     for (Map.Entry<LocalDate, Journal> journalEntry : journals.entrySet()) {
                         digest.update(journalEntry.getKey().toString().getBytes(StandardCharsets.UTF_8));
                         journalEntry.getValue().hashContents(digest);

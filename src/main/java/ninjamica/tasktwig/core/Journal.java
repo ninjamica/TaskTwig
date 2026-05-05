@@ -74,18 +74,18 @@ public record Journal(StringProperty text,
 
     @JsonGetter("text")
     public String getText() {
-        return TaskTwig.callWithFXSafety(text::getValue);
+        return TaskTwig.supplyWithFXSafety(text::getValue);
     }
 
     @JsonGetter("weight")
     public Float getWeight() {
-        return TaskTwig.callWithFXSafety(weight::getValue);
+        return TaskTwig.supplyWithFXSafety(weight::getValue);
     }
 
     @JsonGetter("tasks")
     public List<String> getTasksJson() {
         if (TaskTwig.notFxThread())
-            return TaskTwig.callWithFXSafety(() -> new ArrayList<>(completedTasks));
+            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(completedTasks));
         else
             return completedTasks;
     }
@@ -93,7 +93,7 @@ public record Journal(StringProperty text,
     @JsonGetter("routines")
     public List<String> getRoutinesJson() {
         if (TaskTwig.notFxThread())
-            return TaskTwig.callWithFXSafety(() -> new ArrayList<>(completedRoutines));
+            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(completedRoutines));
         else
             return completedRoutines;
     }

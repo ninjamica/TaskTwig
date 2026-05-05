@@ -46,7 +46,7 @@ public sealed abstract class TaskInterval {
 
     @JsonGetter("lastDone")
     public final LocalDate getLastDone() {
-        return TaskTwig.callWithFXSafety(lastDoneProperty::get);
+        return TaskTwig.supplyWithFXSafety(lastDoneProperty::get);
     }
 
     /**
@@ -117,7 +117,7 @@ public sealed abstract class TaskInterval {
 
     static TaskInterval parseFromJson(JsonNode node, int version) {
         switch (version) {
-            case 5, 6, 7, 8 -> {
+            case 5, 6, 7, 8, 9 -> {
                 JsonNode lastDoneNode = node.get("lastDone");
                 LocalDate lastDone = lastDoneNode.isNull() ? null : LocalDate.parse(lastDoneNode.asString());
                 switch (node.get("@type").asString()) {
@@ -286,7 +286,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("date")
         public LocalDate getDueDate() {
-            return TaskTwig.callWithFXSafety(dueDate::get);
+            return TaskTwig.supplyWithFXSafety(dueDate::get);
         }
     }
 
@@ -377,7 +377,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("interval")
         public int getInterval() {
-            return TaskTwig.callWithFXSafety(intervalDays::get);
+            return TaskTwig.supplyWithFXSafety(intervalDays::get);
         }
 
         public IntegerProperty intervalProperty() {
@@ -386,7 +386,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("fromLastDone")
         public boolean isRepeatFromLastDone() {
-            return TaskTwig.callWithFXSafety(repeatFromLastDone::get);
+            return TaskTwig.supplyWithFXSafety(repeatFromLastDone::get);
         }
 
         public BooleanProperty repeatFromLastDoneProperty() {
@@ -395,7 +395,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("nextDue")
         public LocalDate getNextDue() {
-            return TaskTwig.callWithFXSafety(nextDue::get);
+            return TaskTwig.supplyWithFXSafety(nextDue::get);
         }
     }
 
@@ -469,7 +469,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("bitmap")
         public byte getDayOfWeekBitmap() {
-            return TaskTwig.callWithFXSafety(dayOfWeekMap::get);
+            return TaskTwig.supplyWithFXSafety(dayOfWeekMap::get);
         }
 
         private LocalDate getLastDue() {
@@ -582,7 +582,7 @@ public sealed abstract class TaskInterval {
 
         @JsonGetter("dates")
         public List<Integer> getDates() {
-            return TaskTwig.callWithFXSafety(() -> new ArrayList<>(dates));
+            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(dates));
         }
 
         public ObservableList<Integer> getDatesObservable() {

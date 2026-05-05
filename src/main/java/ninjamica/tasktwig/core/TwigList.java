@@ -35,12 +35,12 @@ public record TwigList(StringProperty name, ObservableList<TwigListItem> items, 
 
         @JsonGetter("name")
         public String getName() {
-            return TaskTwig.callWithFXSafety(name::get);
+            return TaskTwig.supplyWithFXSafety(name::get);
         }
 
         @JsonGetter("done")
         public boolean isDone() {
-            return TaskTwig.callWithFXSafety(done::get);
+            return TaskTwig.supplyWithFXSafety(done::get);
         }
 
         public void hashContents(MessageDigest digest) {
@@ -81,20 +81,20 @@ public record TwigList(StringProperty name, ObservableList<TwigListItem> items, 
 
     @JsonGetter("name")
     public String getName() {
-        return TaskTwig.callWithFXSafety(name::get);
+        return TaskTwig.supplyWithFXSafety(name::get);
     }
 
     @JsonGetter("items")
     public List<TwigListItem> getItemsJson() {
         if (TaskTwig.notFxThread())
-            return TaskTwig.callWithFXSafety(() -> new ArrayList<>(items));
+            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(items));
         else
             return items;
     }
 
     @JsonGetter("expanded")
     public boolean isExpanded() {
-        return TaskTwig.callWithFXSafety(expanded::get);
+        return TaskTwig.supplyWithFXSafety(expanded::get);
     }
 
     public void hashContents(MessageDigest digest) {
