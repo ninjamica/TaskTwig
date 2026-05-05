@@ -30,7 +30,6 @@ import javafx.geometry.Pos;
 import javafx.geometry.Side;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
-import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane.TabClosingPolicy;
@@ -40,7 +39,6 @@ import javafx.scene.layout.*;
 import javafx.scene.shape.Circle;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
-import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
@@ -134,7 +132,6 @@ public class TaskTwigController {
 
     private final TaskTwig twig;
     private final TaskTwigApplication application;
-    private Stage stage;
     private Subscription subscriptions = Subscription.EMPTY;
     private final SaveSyncService backgroundService;
     private final BrowserService browser = BrowserService.create().orElseThrow();
@@ -1519,10 +1516,6 @@ public class TaskTwigController {
         return rootPane;
     }
 
-    public void setStage(Stage stage) {
-        this.stage = stage;
-    }
-
     public void closeTwig(WindowEvent event) {
         event.consume();
 //        runSyncAndExit();
@@ -1716,42 +1709,55 @@ public class TaskTwigController {
 
     protected void onSleepButtonAction(ActionEvent event) {
         if(!twig.isSleeping()) {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Start Sleeping", "Confirm date and time when you went to bed", false, twig::startSleep);
+            TimeDateModalBox modalBox = new TimeDateModalBox(
+                    modalPane,
+                    "Start Sleeping",
+                    "Confirm date and time when you went to bed",
+                    false, twig::startSleep);
             modalPane.show(modalBox);
         }
         else {
-            TimeDateModalBox modalBox = new TimeDateModalBox(modalPane, "Finish Sleeping", "Confirm date and time when you got out of bed", true, datetime -> {
-                LocalDate lastNight = datetime.toLocalDate().minusDays(1);
-                if (twig.sleepRecords().containsKey(lastNight)) {
-                    Alert confirmDialog = createAlert(
-                            AlertType.CONFIRMATION, "Overwrite Sleep Record?",
-                            "Overwrite Sleep Record?",
-                            "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?",
-                            ButtonType.YES, ButtonType.NO);
-
-                    Optional<ButtonType> result = confirmDialog.showAndWait();
-                    if (result.isPresent() && result.get() != ButtonType.YES) {
-                        return;
+            TimeDateModalBox modalBox = new TimeDateModalBox(
+                    modalPane,
+                    "Finish Sleeping",
+                    "Confirm date and time when you got out of bed",
+                    true, datetime -> {
+                        LocalDate lastNight = datetime.toLocalDate().minusDays(1);
+                        if (twig.sleepRecords().containsKey(lastNight)) {
+                            new AlertModalBox(
+                                    modalPane,
+                                    "Overwrite Sleep Record?",
+                                    "An existing sleep record was found for "+lastNight.format(dateFormat)+"\nDo you want to overwrite this record?",
+                                    true,
+                                    buttonType -> {
+                                        if (buttonType == ModalButtonType.YES)
+                                            twig.finishSleep(datetime);
+                                    },
+                                    ModalButtonType.YES, ModalButtonType.NO
+                            ).show();
+                        }
+                        else {
+                            twig.finishSleep(datetime);
+                        }
                     }
-                }
-
-                twig.finishSleep(datetime);
-            } );
+            );
             modalPane.show(modalBox);
         }
     }
 
     protected void onSleepButtonClick(MouseEvent event) {
         if(twig.isSleeping() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
+            new AlertModalBox(
+                    modalPane,
                     "Cancel Sleep Record?",
                     "Do you want to cancel this sleep record?",
-                    "", ButtonType.YES, ButtonType.NO);
-
-            Optional<ButtonType> result = confirmDialog.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.YES) {
-                twig.startSleep(null);
-            }
+                    false,
+                    buttonType -> {
+                        if (buttonType == ModalButtonType.YES)
+                            twig.startSleep(null);
+                    },
+                    ModalButtonType.YES, ModalButtonType.NO
+            ).show();
         }
     }
 
@@ -1786,15 +1792,17 @@ public class TaskTwigController {
 
     protected void onWorkoutButtonClick(MouseEvent event) {
         if(twig.isWorkingOut() && event.getButton() == MouseButton.SECONDARY) {
-            Alert confirmDialog = createAlert(AlertType.CONFIRMATION,
+            new AlertModalBox(
+                    modalPane,
                     "Cancel Workout?",
                     "Do you want to cancel this workout?",
-                    "", ButtonType.YES, ButtonType.NO);
-
-            Optional<ButtonType> result = confirmDialog.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.YES) {
-                twig.startWorkout(null);
-            }
+                    false,
+                    buttonType -> {
+                        if (buttonType == ModalButtonType.YES)
+                            twig.startWorkout(null);
+                    },
+                    ModalButtonType.YES, ModalButtonType.NO
+            ).show();
         }
     }
 
@@ -1814,17 +1822,6 @@ public class TaskTwigController {
         Task newTask = new Task("", new TaskInterval.NoInterval(), 0);
         parent.getValue().getChildren().add(newTask);
         taskTreeTable.getSelectionModel().select(parent.getChildren().getLast());
-    }
-
-    private Alert createAlert(AlertType type, String title, String header, String content, ButtonType... buttons) {
-        Alert alert = new Alert(type);
-        alert.initOwner(stage);
-        alert.setTitle(title);
-        alert.setHeaderText(header);
-        alert.setContentText(content);
-        alert.getButtonTypes().setAll(buttons);
-
-        return alert;
     }
 
     protected void createRoutine(ActionEvent event) {
@@ -1908,44 +1905,6 @@ public class TaskTwigController {
                 ModalButtonType.OK, ModalButtonType.CANCEL
         );
         dialog.show();
-
-//        Dialog<String> dialog = new Dialog<>() {
-//            {
-//                getDialogPane().getStyleClass().add("confirmation");
-//                setHeaderText("Open the following URL and paste the provided code below");
-//
-//
-//
-//                getDialogPane().setContent(contentBox);
-//                getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
-//                setWidth(600);
-//
-//                setResultConverter(buttonType -> {
-//                    if (buttonType == ButtonType.OK) {
-//                        return codeInput.getText();
-//                    }
-//                    return null;
-//                });
-//            }
-//        };
-//
-//        dialog.showAndWait().ifPresent(code -> {
-//            try {
-//                detachTwigData();
-//                twig.authDbxFromCode(code);
-//                onDbxButton();
-//            }
-//            catch (DbxException e) {
-//                createAlert(AlertType.ERROR,
-//                        "Authentication Error",
-//                        "Error Authenticating, code not accepted",
-//                        "Make sure you've entered the code properly and try again.",
-//                        ButtonType.OK).showAndWait();
-//            }
-//            finally {
-//                attachTwigData();
-//            }
-//        });
     }
 
     public void onDbxButton() {

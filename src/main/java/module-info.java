@@ -2,7 +2,6 @@ module ninjamica.tasktwig.tasktwig {
     requires javafx.controls;
     requires transitive tools.jackson.databind;
     requires org.jetbrains.annotations;
-    requires transitive org.controlsfx.controls;
     requires atlantafx.base;
 
     requires transitive javafx.base;
@@ -14,10 +13,6 @@ module ninjamica.tasktwig.tasktwig {
     requires com.gluonhq.attach.settings;
     requires com.gluonhq.attach.browser;
 
-
-    opens ninjamica.tasktwig.ui to javafx.fxml;
-    opens ninjamica.tasktwig.ui.util to javafx.fxml;
-    opens ninjamica.tasktwig.core to javafx.fxml;
     exports ninjamica.tasktwig.core;
     exports ninjamica.tasktwig.ui;
     exports ninjamica.tasktwig.ui.util;

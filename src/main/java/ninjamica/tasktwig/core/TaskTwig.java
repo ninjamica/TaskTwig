@@ -173,7 +173,7 @@ public class TaskTwig implements Serializable {
         visualTheme.subscribe((oldVal, newVal) -> {
             System.out.println(oldVal + " -> " + newVal);
             if (!Objects.equals(newVal, oldVal))
-                settingsService.store("visualTheme", newVal);
+                settingsService.store("theme", newVal);
 //                writeConfigFile();
         });
     }
@@ -370,7 +370,10 @@ public class TaskTwig implements Serializable {
         settingsService.store("nightStart", nightStart.get().toString());
         settingsService.store("autoSync", autoSync.getValue().toString());
         settingsService.store("syncInterval", syncInterval.getValue().toString());
-        settingsService.store("theme", visualTheme.get());
+
+        if (visualTheme.get() != null) {
+            settingsService.store("theme", visualTheme.get());
+        }
     }
 
     private void readConfigFile() {

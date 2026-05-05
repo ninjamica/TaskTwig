@@ -23,7 +23,6 @@ public class TaskTwigApplication extends Application {
 
         TaskTwigController controller = new TaskTwigController(this, taskTwig);
         Scene scene = new Scene(controller.getRoot());
-        controller.setStage(stage);
 
         stage.getIcons().addAll(
           new Image(TaskTwigApplication.class.getResourceAsStream("images/icon-64.png")),
