@@ -36,7 +36,7 @@ import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.*;
 import javafx.scene.layout.*;
-import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.stage.WindowEvent;
@@ -1370,7 +1370,12 @@ public class TaskTwigController {
         );
         settingsDbxName = new Label("dbx account here");
         settingsDbxIcon = new ImageView();
-        settingsDbxIcon.setClip(new Circle(24, 24, 24));
+        settingsDbxIcon.setFitWidth(48);
+        settingsDbxIcon.setFitHeight(48);
+        Rectangle iconClip = new Rectangle(48, 48);
+        iconClip.setArcWidth(38);
+        iconClip.setArcHeight(38);
+        settingsDbxIcon.setClip(iconClip);
         settingsDbxButton = new Button("Dbx Connect Button");
         settingsDbxButton.setOnAction(this::onDbxButton);
 

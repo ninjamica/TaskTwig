@@ -65,7 +65,7 @@ public class TaskCategory {
     }
 
     public void setName(String name) {
-        TaskTwig.runWithFXSafety(() -> this.name.set(name));
+        TaskTwig.setWithFXSafety(this.name::set, name);
     }
 
     public ObjectProperty<Paint> paintProperty() {
@@ -77,7 +77,7 @@ public class TaskCategory {
     }
 
     public void setPaint(Paint paint) {
-        TaskTwig.runWithFXSafety(() -> this.paint.set(paint));
+        TaskTwig.setWithFXSafety(this.paint::set, paint);
     }
 
     @JsonGetter("paint")

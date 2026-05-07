@@ -30,6 +30,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -211,7 +212,7 @@ public class TaskTwig implements Serializable {
             today.setValue(date);
     }
 
-    public static ObjectExpression<LocalDate> todayValue() {
+    public static ObjectExpression<LocalDate> todayObservable() {
         instance.updateToday();
         return today.getReadOnlyProperty();
     }
@@ -257,6 +258,13 @@ public class TaskTwig implements Serializable {
             return CompletableFuture.supplyAsync(supplier, Platform::runLater).join();
         else
             return supplier.get();
+    }
+
+    static <U> void setWithFXSafety(Consumer<U> setter, U value) {
+        if (!Platform.isFxApplicationThread() && TaskTwig.notFXThread)
+            CompletableFuture.runAsync(() -> setter.accept(value), Platform::runLater).join();
+        else
+            setter.accept(value);
     }
 
     public BooleanProperty autoSyncProperty() {
@@ -1160,7 +1168,7 @@ public class TaskTwig implements Serializable {
     public Image getDbxAccountImage() throws DbxException {
         String iconUrl = dbxClient.get().users().getCurrentAccount().getProfilePhotoUrl();
         if (iconUrl != null)
-            return new Image(iconUrl, 48, 48, true, true, true);
+            return new Image(iconUrl, 64, 64, true, true, true);
         else
             return null;
     }

@@ -228,7 +228,7 @@ public sealed abstract class TaskInterval {
             super(lastDone);
             doneBinding = lastDoneProperty.isNotNull();
             nextDueBinding = ObjectExpression.objectExpression(new SimpleObjectProperty<>(null));
-            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
+            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayObservable().isEqualTo(lastDoneProperty));
         }
 
         @Override
@@ -261,7 +261,7 @@ public sealed abstract class TaskInterval {
             this.dueDate.set(dueDate);
             doneBinding = lastDoneProperty.isNotNull();
             nextDueBinding = ObjectExpression.objectExpression(this.dueDate);
-            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayValue().isEqualTo(lastDoneProperty));
+            inProgressBinding = lastDoneProperty.isNull().or(TaskTwig.todayObservable().isEqualTo(lastDoneProperty));
         }
 
         @Override
@@ -316,7 +316,7 @@ public sealed abstract class TaskInterval {
         private void generateBinding() {
             doneBinding = new BooleanBinding() {
                 {
-                    bind(lastDoneProperty, intervalDays, nextDue, repeatFromLastDone, TaskTwig.todayValue());
+                    bind(lastDoneProperty, intervalDays, nextDue, repeatFromLastDone, TaskTwig.todayObservable());
                 }
                 @Override
                 protected boolean computeValue() {
@@ -329,7 +329,7 @@ public sealed abstract class TaskInterval {
             };
             inProgressBinding = Bindings.createBooleanBinding(
                     () -> !TaskTwig.today().isBefore(nextDue.get().minusDays(intervalDays.get())),
-                    intervalDays, nextDue, TaskTwig.todayValue()
+                    intervalDays, nextDue, TaskTwig.todayObservable()
             );
             nextDueBinding = ObjectExpression.objectExpression(nextDue);
         }
@@ -422,9 +422,9 @@ public sealed abstract class TaskInterval {
             dayOfWeekMap.set(bitmap);
 
             doneBinding = Bindings.createBooleanBinding(this::checkDone,
-                    lastDoneProperty, dayOfWeekMap, TaskTwig.todayValue());
+                    lastDoneProperty, dayOfWeekMap, TaskTwig.todayObservable());
             inProgressBinding = Bindings.createBooleanBinding(this::checkInProgress);
-            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dayOfWeekMap, TaskTwig.todayValue());
+            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dayOfWeekMap, TaskTwig.todayObservable());
         }
 
         @Override
@@ -554,9 +554,9 @@ public sealed abstract class TaskInterval {
         }
 
         private void generateBindings() {
-            doneBinding = Bindings.createBooleanBinding(this::checkDone, lastDoneProperty, dates, TaskTwig.todayValue());
-            inProgressBinding = Bindings.createBooleanBinding(this::checkInProgress, lastDoneProperty, dates, TaskTwig.todayValue());
-            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dates, TaskTwig.todayValue());
+            doneBinding = Bindings.createBooleanBinding(this::checkDone, lastDoneProperty, dates, TaskTwig.todayObservable());
+            inProgressBinding = Bindings.createBooleanBinding(this::checkInProgress, lastDoneProperty, dates, TaskTwig.todayObservable());
+            nextDueBinding = Bindings.createObjectBinding(this::getNextDue, dates, TaskTwig.todayObservable());
         }
 
         @Override
