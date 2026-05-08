@@ -13,6 +13,7 @@ module ninjamica.tasktwig.tasktwig {
     requires com.gluonhq.attach.settings;
     requires com.gluonhq.attach.browser;
     requires com.fasterxml.jackson.core;
+    requires it.unimi.dsi.fastutil.core;
 
     exports ninjamica.tasktwig.core;
     exports ninjamica.tasktwig.ui;

@@ -4,18 +4,26 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.core.JsonParseException;
+import javafx.beans.InvalidationListener;
 import javafx.beans.Observable;
 import javafx.beans.binding.ObjectBinding;
 import javafx.beans.binding.ObjectExpression;
 import javafx.beans.property.*;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableSet;
+import javafx.collections.SetChangeListener;
+import javafx.util.Subscription;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Range;
 import tools.jackson.databind.JsonNode;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.TreeSet;
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
 @JsonSubTypes({
@@ -49,7 +57,7 @@ public sealed abstract class TwigInterval {
         };
     }
 
-    public static TwigInterval parseFromJson(JsonNode node, int version) throws JsonParseException {
+    public static TwigInterval parseFromJson(JsonNode node, int version) throws TaskTwig.TwigJsonAssertException {
         String type = node.required("@type").asString();
 
         switch (type) {
@@ -80,7 +88,7 @@ public sealed abstract class TwigInterval {
 
                 return new WeekInterval(interval, map, repeatTo, autoRepeat, reference);
             }
-            default -> throw new JsonParseException("unknown type in TwigInterval: " + type);
+            default -> throw new TaskTwig.TwigJsonAssertException("unknown type in TwigInterval: " + type);
         }
     }
 
@@ -110,7 +118,7 @@ public sealed abstract class TwigInterval {
     protected abstract LocalDate calcPrevOccurrence(LocalDate occurrenceDate);
 
     @JsonGetter("reference")
-    protected LocalDate getReference() {
+    public LocalDate getReference() {
         return TaskTwig.supplyWithFXSafety(reference::get);
     }
     protected void setReference(LocalDate lastOccurred) {
@@ -199,11 +207,14 @@ public sealed abstract class TwigInterval {
 
 
     /**
-     * A `TwigInterval` which represents a single, non-repeating occurrence.
+     * A `TwigInterval` which represents a single, non-repeating occurrence on a specified date.
+     * Set this date to `NO_DATE` to represent there being no fixed end date (e.g. a task with no due date)
      */
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
     @JsonIncludeProperties({"reference"})
     public static final class NoRepeat extends TwigInterval {
+
+        public static final LocalDate NO_DATE = LocalDate.MAX;
 
         public NoRepeat(LocalDate eventDate) {
             super(eventDate, true);
@@ -280,6 +291,9 @@ public sealed abstract class TwigInterval {
             Period period = getPeriod();
             LocalDate reference = getReference();
 
+            if (reference == null)
+                return null;
+
             switch (getRepeatPattern()) {
                 case FROM_REF -> reference = reference.plus(period);
                 case REPEAT_ON_BEFORE -> {
@@ -318,7 +332,7 @@ public sealed abstract class TwigInterval {
         private final IntegerProperty weekInterval;
 
         public WeekInterval(int weekInterval, RepeatPattern repeatPattern, boolean autoRepeat, DayOfWeek... days) {
-            this(weekInterval, parseDaysOfWeek(days), repeatPattern, autoRepeat, null);
+            this(weekInterval, parseDaysOfWeek(days), repeatPattern, autoRepeat, TaskTwig.today());
         }
 
         public WeekInterval(int weekInterval, byte dayMap, RepeatPattern repeatPattern, boolean autoRepeat, LocalDate reference) {
@@ -363,10 +377,12 @@ public sealed abstract class TwigInterval {
 
         @Override
         protected LocalDate calcNextOccurrenceAround(LocalDate date) {
-            RepeatPattern repeat = getRepeatPattern();
             LocalDate reference = getReference();
 
-            switch (repeat) {
+            if (reference == null)
+                return null;
+
+            switch (getRepeatPattern()) {
                 case FROM_REF -> reference = getNextFromDate(reference);
                 case REPEAT_ON_BEFORE -> {
                     while (reference != null && !reference.isAfter(date))
@@ -464,6 +480,135 @@ public sealed abstract class TwigInterval {
                 bitmap |= (byte) (1 << day.ordinal());
             }
             return bitmap;
+        }
+    }
+
+    public static final class MonthInterval extends ConfigRepeatInterval {
+
+        private final ObservableSet<@Range(from = 1, to = 31) Integer> dates;
+        private final IntegerProperty interval;
+
+        public MonthInterval(int monthInterval, RepeatPattern repeatPattern, boolean autoRepeat, LocalDate reference, @Range(from = 1, to = 31) Integer... dates) {
+            ObservableSet<Integer> datesProp = FXCollections.observableSet(new HashSet<>());
+            IntegerProperty intervalProp = new SimpleIntegerProperty(monthInterval);
+
+            super(repeatPattern, autoRepeat, true, reference, true, datesProp, intervalProp);
+            this.dates = datesProp;
+            this.interval = intervalProp;
+            setDates(dates);
+        }
+
+        public MonthInterval(int monthInterval, RepeatPattern repeatPattern, boolean autoRepeat, @Range(from = 1, to = 31) Integer... dates) {
+            this(monthInterval, repeatPattern, autoRepeat, TaskTwig.today(), dates);
+        }
+
+        @Override
+        protected LocalDate calcOccurrence() {
+            if (getAutoRepeat())
+                return calcNextOccurrenceAround(TaskTwig.today());
+            else
+                return getNextFromDate(getReference());
+        }
+
+        @Override
+        protected LocalDate calcPrevOccurrence(LocalDate date) {
+            TreeSet<Integer> dates = TaskTwig.supplyWithFXSafety(() -> new TreeSet<>(this.dates));
+
+            if (this.dates.isEmpty())
+                return null;
+
+            int refDate = date.getDayOfMonth();
+            Integer prevDate = dates.lower(refDate);
+
+            if (prevDate == null) {
+                date = date.minusDays(getMonthInterval());
+                prevDate = dates.last();
+            }
+
+            return date.withDayOfMonth(Math.min(prevDate, date.lengthOfMonth()));
+        }
+
+        @Override
+        protected LocalDate calcNextOccurrenceAround(LocalDate date) {
+            LocalDate reference = getReference();
+
+            if (reference == null)
+                return null;
+
+            return switch (getRepeatPattern()) {
+                case FROM_REF -> getNextFromDate(reference);
+                case REPEAT_ON_BEFORE -> {
+                    while (reference != null && !reference.isAfter(date))
+                        reference = getNextFromDate(reference);
+
+                    if (reference != null)
+                        reference = calcPrevOccurrence(reference);
+
+                    yield reference;
+                }
+                case REPEAT_ON_AFTER -> {
+                    while (reference != null && reference.isBefore(date))
+                        reference = getNextFromDate(reference);
+
+                    yield reference;
+                }
+            };
+        }
+
+        private LocalDate getNextFromDate(LocalDate date) {
+            TreeSet<Integer> dates = TaskTwig.supplyWithFXSafety(() -> new TreeSet<>(this.dates));
+
+            if (this.dates.isEmpty())
+                return null;
+
+            int refDate = date.getDayOfMonth();
+            Integer nextDate = dates.higher(refDate);
+
+            if (nextDate == null || Math.min(nextDate, date.lengthOfMonth()) == refDate) {
+                date = date.plusMonths(getMonthInterval());
+                nextDate = dates.first();
+            }
+
+            return date.withDayOfMonth(Math.min(nextDate, date.lengthOfMonth()));
+        }
+
+        public IntegerProperty intervalProperty() {
+            return interval;
+        }
+        public void addListener(SetChangeListener<Integer> listener) {
+            dates.addListener(listener);
+        }
+        public void removeListener(SetChangeListener<Integer> listener) {
+            dates.removeListener(listener);
+        }
+        public void addListener(InvalidationListener listener) {
+            dates.addListener(listener);
+        }
+        public void removeListener(InvalidationListener listener) {
+            dates.removeListener(listener);
+        }
+        public Subscription subscribe(Runnable invalidationSubscriber) {
+            return dates.subscribe(invalidationSubscriber);
+        }
+
+        public Set<Integer> getDates() {
+            return TaskTwig.supplyWithFXSafety(() -> Set.copyOf(this.dates));
+        }
+        public int getMonthInterval() {
+            return TaskTwig.supplyWithFXSafety(interval::get);
+        }
+
+        public void setDates(@Range(from = 1, to = 31) Integer... dates) {
+            TaskTwig.runWithFXSafety(() -> {
+                this.dates.clear();
+                for (int date : dates) {
+                    if (date > 0 && date <= 31)
+                        this.dates.add(date);
+                }
+            });
+        }
+        public void setMonthInterval(int monthInterval) {
+            TaskTwig.setWithFXSafety(this.interval::set, monthInterval);
         }
     }
 }
