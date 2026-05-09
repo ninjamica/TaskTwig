@@ -30,8 +30,10 @@ import java.util.TreeSet;
         @JsonSubTypes.Type(value = TwigInterval.NoRepeat.class, name = "noRepeat"),
         @JsonSubTypes.Type(value = TwigInterval.DailyInterval.class, name = "daily"),
         @JsonSubTypes.Type(value = TwigInterval.PeriodInterval.class, name = "period"),
-        @JsonSubTypes.Type(value = TwigInterval.WeekInterval.class, name = "week")
+        @JsonSubTypes.Type(value = TwigInterval.WeekInterval.class, name = "week"),
+        @JsonSubTypes.Type(value = TwigInterval.MonthInterval.class, name = "month")
 })
+@JsonIncludeProperties({"reference"})
 public sealed abstract class TwigInterval {
 
     private final ObjectProperty<LocalDate> reference = new SimpleObjectProperty<>();
@@ -57,7 +59,7 @@ public sealed abstract class TwigInterval {
         };
     }
 
-    public static TwigInterval parseFromJson(JsonNode node, int version) throws TaskTwig.TwigJsonAssertException {
+    static TwigInterval parseFromJson(JsonNode node, int version) throws TaskTwig.TwigJsonAssertException {
         String type = node.required("@type").asString();
 
         switch (type) {
@@ -133,7 +135,8 @@ public sealed abstract class TwigInterval {
         REPEAT_ON_AFTER
     }
 
-    static abstract non-sealed class ConfigRepeatInterval extends TwigInterval {
+    @JsonIncludeProperties({"repeatTo", "autoRepeat"})
+    public static abstract non-sealed class ConfigRepeatInterval extends TwigInterval {
         private final ObjectProperty<RepeatPattern> repeatPattern;
         private final BooleanProperty autoRepeat;
 
@@ -263,7 +266,7 @@ public sealed abstract class TwigInterval {
      * object)
      */
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
-    @JsonIncludeProperties({"period, reference", "repeat"})
+    @JsonIncludeProperties({"period", "reference", "repeatTo", "autoRepeat"})
     public static final class PeriodInterval extends ConfigRepeatInterval {
         private final ObjectProperty<Period> period;
 
@@ -326,7 +329,7 @@ public sealed abstract class TwigInterval {
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
-    @JsonIncludeProperties({"map", "interval", "reference", "repeat"})
+    @JsonIncludeProperties({"map", "interval", "reference", "repeatTo", "autoRepeat"})
     public static final class WeekInterval extends ConfigRepeatInterval {
         private final ReadOnlyObjectWrapper<Byte> dayOfWeekMap;
         private final IntegerProperty weekInterval;
@@ -483,6 +486,8 @@ public sealed abstract class TwigInterval {
         }
     }
 
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
+    @JsonIncludeProperties({"dates", "interval", "reference", "repeatTo", "autoRepeat"})
     public static final class MonthInterval extends ConfigRepeatInterval {
 
         private final ObservableSet<@Range(from = 1, to = 31) Integer> dates;
@@ -591,9 +596,11 @@ public sealed abstract class TwigInterval {
             return dates.subscribe(invalidationSubscriber);
         }
 
+        @JsonGetter("dates")
         public Set<Integer> getDates() {
             return TaskTwig.supplyWithFXSafety(() -> Set.copyOf(this.dates));
         }
+        @JsonGetter("interval")
         public int getMonthInterval() {
             return TaskTwig.supplyWithFXSafety(interval::get);
         }

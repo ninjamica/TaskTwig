@@ -584,26 +584,25 @@ public class TaskTwig implements Serializable {
 
 
         this.twigTaskList = FXCollections.observableArrayList();
-//        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
-//            parser.nextToken();
-//
-//            TaskTwig.requireJsonProperty(parser, "version");
-//            int version =  parser.nextIntValue(0);
-//
-//            if (version >= 9) {
-//                TaskCategory.clearCategoryMap();
-//                TaskTwig.requireJsonProperty(parser, "categories");
-//                parser.nextToken();
-//                TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
-//            }
-//
-//            TaskTwig.requireJsonProperty(parser, "tasks");
-//            parser.nextToken();
-//            TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, version));
-//        } catch (TwigJsonAssertException | JacksonIOException e) {
-//            System.err.println(e.getLocalizedMessage());
-//            this.taskList.clear();
-//        }
+        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
+            parser.nextToken();
+
+            TaskTwig.requireJsonProperty(parser, "version");
+            int version =  parser.nextIntValue(0);
+
+            if (version >= 9) {
+                TaskTwig.requireJsonProperty(parser, "categories");
+
+                while(parser.nextToken() != JsonToken.END_ARRAY) {}
+            }
+
+            TaskTwig.requireJsonProperty(parser, "tasks");
+            parser.nextToken();
+            TaskTwig.parseJsonList(twigTaskList, parser, node -> new TwigTask(node, version));
+        } catch (TwigJsonAssertException | JacksonIOException e) {
+            System.err.println(e.getLocalizedMessage());
+//            this.twigTaskList.clear();
+        }
 
         // Parse lists
         this.twigLists = FXCollections.observableArrayList();
