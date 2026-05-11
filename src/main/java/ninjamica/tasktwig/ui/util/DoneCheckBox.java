@@ -2,6 +2,7 @@ package ninjamica.tasktwig.ui.util;
 
 import javafx.event.ActionEvent;
 import javafx.scene.control.CheckBox;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
@@ -21,14 +22,15 @@ public class DoneCheckBox extends CheckBox {
         setSelected(initialValue);
     }
 
-    public void setFireCallback(Consumer<Boolean> callback) {
+    public void setFireCallback(@Nullable Consumer<Boolean> callback) {
         fireCallback = (callback == null) ? (done -> {}) : callback;
     }
 
     @Override
     public void fire() {
-        fireCallback.accept(!isSelected());
-        fireEvent(new ActionEvent());
+        if (fireCallback != null)
+            fireCallback.accept(!isSelected());
+//        fireEvent(new ActionEvent());
     }
 
 }

@@ -9,15 +9,18 @@ import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.scene.paint.Paint;
 import org.jetbrains.annotations.Nullable;
 import tools.jackson.core.JsonParser;
 import tools.jackson.databind.JsonNode;
 
+import java.awt.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.List;
 
 @JsonIncludeProperties({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
 @JsonPropertyOrder({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
@@ -129,11 +132,19 @@ public class Task {
             TaskTwig.requireJsonProperty(parser, "categories");
             parser.nextToken();
             TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
+
+//            if(TaskCategory.getCategoryFromName("Other"))
+//            categoryList.add(new TaskCategory("Other", Paint.valueOf("ffffff")));
         }
 
         TaskTwig.requireJsonProperty(parser, "tasks");
         parser.nextToken();
         TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, version));
+        for (Task task : taskList) {
+            if (task.getCategory() == null) {
+                task.setCategory(categoryList.getLast());
+            }
+        }
     }
 
     public StringProperty nameProperty() {
@@ -151,6 +162,11 @@ public class Task {
 
     public TaskCategory getCategory() {
         return TaskTwig.supplyWithFXSafety(category::get);
+    }
+    public void setCategory(TaskCategory category) {
+        TaskTwig.runWithFXSafety(() -> {
+            this.category.set(category);
+        });
     }
 
     @JsonGetter("category")

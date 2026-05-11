@@ -38,6 +38,7 @@ public sealed abstract class TwigInterval {
 
     private final ObjectProperty<LocalDate> reference = new SimpleObjectProperty<>();
     private final ObjectExpression<LocalDate> occurrence;
+    private final ObjectExpression<LocalDate> prevOccurrence;
 
     protected TwigInterval(LocalDate reference, boolean bindReference, Observable... observables) {
         this(bindReference, observables);
@@ -55,6 +56,18 @@ public sealed abstract class TwigInterval {
             @Override
             protected LocalDate computeValue() {
                 return calcOccurrence();
+            }
+        };
+        prevOccurrence = new ObjectBinding<>() {
+            {
+                if (bindReference)
+                    bind(reference);
+                bind(observables);
+            }
+
+            @Override
+            protected LocalDate computeValue() {
+                return calcPrevOccurrence(calcOccurrence());
             }
         };
     }
@@ -104,7 +117,7 @@ public sealed abstract class TwigInterval {
     }
 
     public LocalDate getPrevOccurrence() {
-        return calcPrevOccurrence(getNextOccurrence());
+        return TaskTwig.supplyWithFXSafety(prevOccurrence::get);
     }
 
     /**
@@ -114,6 +127,10 @@ public sealed abstract class TwigInterval {
      */
     public ObjectExpression<LocalDate> occurrenceObservable() {
         return occurrence;
+    }
+
+    public ObjectExpression<LocalDate> prevOccurrenceObservable() {
+        return prevOccurrence;
     }
 
     protected abstract LocalDate calcOccurrence();
@@ -127,6 +144,7 @@ public sealed abstract class TwigInterval {
         TaskTwig.setWithFXSafety(reference::set, lastOccurred);
     }
 
+    public abstract String toString();
 
 
     public enum RepeatPattern {
@@ -236,6 +254,10 @@ public sealed abstract class TwigInterval {
         public void setDate(LocalDate date) {
             setReference(date);
         }
+
+        public String toString() {
+            return "NoRepeat[" + getReference() + "]";
+        }
     }
 
     /**
@@ -258,6 +280,10 @@ public sealed abstract class TwigInterval {
         @Override
         protected LocalDate calcPrevOccurrence(LocalDate occurrenceDate) {
             return occurrenceDate.minusDays(1);
+        }
+
+        public String toString() {
+            return "DailyInterval";
         }
     }
 
@@ -325,6 +351,15 @@ public sealed abstract class TwigInterval {
 
         public void setPeriod(Period period) {
             TaskTwig.setWithFXSafety(this.period::set, period);
+        }
+
+        public String toString() {
+            return "PeriodInterval[" +
+                    "period=" + getPeriod() +
+                    ", reference=" + getReference() +
+                    ", repeatTo=" + getRepeatPattern() +
+                    ", autoRepeat=" + getAutoRepeat() +
+                    "]";
         }
     }
 
@@ -484,6 +519,16 @@ public sealed abstract class TwigInterval {
             }
             return bitmap;
         }
+
+        public String toString() {
+            return "WeekInterval[" +
+                    "map=" + getDayOfWeekMap() +
+                    ", interval=" + getWeekInterval() +
+                    ", reference=" + getReference() +
+                    ", repeatTo=" + getRepeatPattern() +
+                    ", autoRepeat=" + getAutoRepeat() +
+                    "]";
+        }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY)
@@ -616,6 +661,16 @@ public sealed abstract class TwigInterval {
         }
         public void setMonthInterval(int monthInterval) {
             TaskTwig.setWithFXSafety(this.interval::set, monthInterval);
+        }
+
+        public String toString() {
+            return "MonthInterval[" +
+                    "dates=" + getDates() +
+                    ", interval=" + getMonthInterval() +
+                    ", reference=" + getReference() +
+                    ", repeatTo=" + getRepeatPattern() +
+                    ", autoRepeat=" + getAutoRepeat() +
+                    "]";
         }
     }
 }

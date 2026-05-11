@@ -3,22 +3,27 @@ package ninjamica.tasktwig.core;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
+import javafx.beans.binding.BooleanExpression;
+import javafx.beans.property.*;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.Period;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-@JsonIncludeProperties({"name", "category", "occurrencePattern", "extend", "interval", "dueTime", "lastDone"})
-public class TwigTask {
+@JsonIncludeProperties({"name", "category", "points", "occurrencePattern", "extend", "interval", "dueTime", "lastDone", "expanded", "subTasks"})
+public class TwigTask implements TaskInterface {
 
     public enum OccurrencePattern {
         OCCUR_ON,
@@ -34,57 +39,97 @@ public class TwigTask {
     }
 
     private final StringProperty name = new SimpleStringProperty();
-    private final ObjectProperty<TaskCategory> category = new SimpleObjectProperty<>();
+    private final ReadOnlyObjectWrapper<TaskCategory> category = new ReadOnlyObjectWrapper<>();
+    private final IntegerProperty points = new SimpleIntegerProperty();
     private final ObjectProperty<OccurrencePattern> occurrencePattern = new SimpleObjectProperty<>();
     private final ObjectProperty<ExtendPattern> extendPattern = new SimpleObjectProperty<>();
     private final ObjectProperty<TwigInterval> interval = new SimpleObjectProperty<>();
     private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
+    private final ObservableList<TwigSubTask> subTasks = FXCollections.observableArrayList();
+    private final BooleanProperty subTasksExpanded = new SimpleBooleanProperty();
     private final ObjectProperty<LocalDate> lastDone = new SimpleObjectProperty<>();
 
-    public TwigTask(String name, TaskCategory category, @NotNull OccurrencePattern occurrencePattern, @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime, LocalDate lastDone) {
+    private final BooleanBinding isDoneBinding;
+    private final BooleanBinding isTodayBinding;
+    private final BooleanBinding isOverdueBinding;
+
+    public TwigTask(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
+                    @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime,
+                    @Nullable List<TwigSubTask> subTasks,  boolean subTasksExpanded, LocalDate lastDone) {
         this.name.set(name);
-        this.category.set(category);
+        this.points.set(points);
+        setCategory(category);
         this.occurrencePattern.set(occurrencePattern);
         this.extendPattern.set(extendPattern);
         this.interval.set(interval);
         this.dueTime.set(dueTime);
+        this.subTasksExpanded.set(subTasksExpanded);
         this.lastDone.set(lastDone);
+
+        if (subTasks != null) {
+            this.subTasks.addAll(subTasks);
+            this.subTasks.forEach(subTask -> subTask.setParentTask(this));
+        }
 
         this.occurrencePattern.subscribe(occurrence -> updateIntervalPatterns(occurrence, getExtendPattern()));
         this.extendPattern.subscribe(extend -> updateIntervalPatterns(getOccurrencePattern(), extend));
+
+        this.isDoneBinding = Bindings.createBooleanBinding(this::isDone,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable()
+        );
+        this.isTodayBinding = Bindings.createBooleanBinding(this::isToday,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable(),
+                this.occurrencePattern
+        );
+        this.isOverdueBinding = Bindings.createBooleanBinding(this::isOverdue,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable(),
+                this.occurrencePattern
+        );
     }
 
-    public TwigTask(String name, TaskCategory category, @NotNull OccurrencePattern occurrencePattern, @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime) {
-        this(name, category, occurrencePattern, extendPattern, interval, dueTime, null);
+    public TwigTask(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
+                    @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime,
+                    TwigSubTask... subTasks) {
+        this(name, category, points, occurrencePattern, extendPattern, interval, dueTime, List.of(subTasks), false, null);
     }
 
     public TwigTask(JsonNode node, int version) {
         String name;
         TaskCategory category = null;
+        int points = 1;
         OccurrencePattern occurrencePattern;
         ExtendPattern extendPattern;
         TwigInterval interval;
         LocalTime dueTime = null;
+        List<TwigSubTask> subTasks = new ArrayList<>();
+        boolean expanded = false;
         LocalDate lastDone = null;
 
         switch (version) {
             case 10 -> {
                 name = node.required("name").asString();
+                points = node.required("points").asInt();
                 occurrencePattern = OccurrencePattern.valueOf(node.required("occurrencePattern").asString());
                 extendPattern = ExtendPattern.valueOf(node.required("extend").asString());
                 interval = TwigInterval.parseFromJson(node.required("interval"), version);
 
-                Optional<JsonNode> catNode = node.optional("category");
-                if (catNode.isPresent())
-                    category = TaskCategory.getCategoryFromName(catNode.get().asString());
+                category = node.optional("category")
+                        .map(catNode -> TaskCategory.getCategoryFromName(catNode.asString()))
+                        .orElse(null);
 
-                Optional<JsonNode> dueTimeNode = node.optional("dueTime");
-                if (dueTimeNode.isPresent())
-                    dueTime = LocalTime.parse(dueTimeNode.get().asString());
+                dueTime = node.optional("dueTime")
+                        .map(dueTimeNode -> LocalTime.parse(dueTimeNode.asString())).orElse(null);
 
-                Optional<JsonNode> lastDoneNode = node.optional("lastDone");
-                if (lastDoneNode.isPresent())
-                    lastDone = LocalDate.parse(lastDoneNode.get().asString());
+                node.optional("subTasks").ifPresent(subTaskNode -> {
+                    for (JsonNode subTask : subTaskNode.asArray()) {
+                        subTasks.add(new TwigSubTask(subTask, version));
+                    }
+                });
+
+                expanded = node.optional("expanded").map(JsonNode::asBoolean).orElse(false);
+
+                lastDone = node.optional("lastDone")
+                        .map(lastDoneNode -> LocalDate.parse(lastDoneNode.asString())).orElse(null);
             }
             case 1,2,3,4,5,6,7,8,9 -> {
                 if (node.has("priority")) {
@@ -95,6 +140,7 @@ public class TwigTask {
                     category = task.getCategory();
                     occurrencePattern = OccurrencePattern.DUE_BY;
                     dueTime = task.getDueTime();
+                    expanded = task.isExpanded();
                     lastDone = taskInterval.getLastDone();
 
                     switch (taskInterval) {
@@ -140,6 +186,15 @@ public class TwigTask {
                             );
                         }
                     }
+
+                    for (Task subTask : task.getChildrenJson()) {
+                        subTasks.add(new TwigSubTask(
+                                subTask.getName(),
+                                subTask.isDone() ? TaskTwig.today() : null,
+                                subTask.getDueTime(),
+                                null
+                        ));
+                    }
                 }
                 else {
                     if (version > 3)
@@ -148,6 +203,7 @@ public class TwigTask {
                     Routine routine = new Routine(node, version);
 
                     name = routine.getName();
+                    category = TaskCategory.getCategoryFromName("Other");
                     occurrencePattern = OccurrencePattern.OCCUR_ON;
                     extendPattern = ExtendPattern.AUTO;
                     dueTime = routine.getDueTime();
@@ -178,7 +234,7 @@ public class TwigTask {
             default -> throw new TaskTwig.TwigJsonVersionException("Invalid version for TwigTask: " + version);
         }
 
-        this(name, category, occurrencePattern, extendPattern, interval, dueTime, lastDone);
+        this(name, category, points, occurrencePattern, extendPattern, interval, dueTime, subTasks, expanded, lastDone);
     }
 
     private void updateIntervalPatterns(OccurrencePattern occurrence, ExtendPattern extend) {
@@ -200,22 +256,26 @@ public class TwigTask {
         }
     }
 
+    /**
+     * Represents whether the task should show up in the Today Pane for `TaskTwig.today()`. Completed tasks are not
+     * included here and are checked for separately.
+     * @return `true` if the task should appear in Today Pane and is not done
+     */
     public boolean isToday() {
-        LocalDate today = TaskTwig.today();
-
-        if (today.equals(getLastDone()))
-            return true;
+        if (isDone())
+            return false;
 
         LocalDate next = getInterval().getNextOccurrence();
         if (next == null)
             return false;
 
+        LocalDate today = TaskTwig.today();
         switch (getOccurrencePattern()) {
             case OCCUR_ON -> {
                 return today.equals(next);
             }
             case DUE_BY -> {
-                return !today.isAfter(next);
+                return true;
             }
             case START_ON -> {
                 return today.isAfter(next);
@@ -224,9 +284,15 @@ public class TwigTask {
         }
     }
 
+    /**
+     * Returns whether the task has been marked as completed <b>as of today</b>
+     * @return
+     */
     public boolean isDone() {
-        LocalDate lastDone = getLastDone();
+        return isDone(getLastDone());
+    }
 
+    boolean isDone(LocalDate lastDone) {
         if (lastDone == null)
             return false;
 
@@ -240,24 +306,66 @@ public class TwigTask {
         return lastDone.isAfter(prevOccurrence);
     }
 
+    public boolean isDoneToday() {
+        return TaskTwig.today().equals(getLastDone());
+    }
+
     public void setDone(boolean done) {
         LocalDate today = TaskTwig.today();
         setLastDone(done ? today : null);
 
         TwigInterval interval = getInterval();
-        if (done && interval instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
-            switch (getExtendPattern()) {
-                case NO_EXTEND, ON_COMPLETION -> repeatInterval.startFromNext();
-                case FROM_COMPLETION -> repeatInterval.startFrom(today);
+        if (done) {
+            if(interval instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
+                switch (getExtendPattern()) {
+                    case NO_EXTEND, ON_COMPLETION -> repeatInterval.startFromNext();
+                    case FROM_COMPLETION -> repeatInterval.startFrom(today);
+                }
             }
         }
+    }
+
+    public boolean isOverdue() {
+        return isOverdue(getLastDone());
+    }
+
+    boolean isOverdue(LocalDate lastDone) {
+        switch (getOccurrencePattern()) {
+            case OCCUR_ON, START_ON -> {
+                return false;
+            }
+            case DUE_BY -> {
+                if (isDone(lastDone))
+                    return false;
+
+                LocalDate nextDue = getInterval().getNextOccurrence();
+                if (nextDue == null)
+                    return false;
+
+                return TaskTwig.today().isAfter(nextDue);
+            }
+            case null -> throw new IllegalStateException("Illegal occurrence pattern (likely null)");
+        }
+    }
+
+    public BooleanExpression isTodayObservable() {
+        return this.isTodayBinding;
+    }
+    public BooleanExpression isDoneObservable() {
+        return this.isDoneBinding;
+    }
+    public BooleanExpression isOverdueObservable() {
+        return this.isOverdueBinding;
     }
 
     public StringProperty nameProperty() {
         return name;
     }
-    public ObjectProperty<TaskCategory> categoryProperty() {
-        return category;
+    public ReadOnlyObjectProperty<TaskCategory> categoryProperty() {
+        return category.getReadOnlyProperty();
+    }
+    public IntegerProperty pointsProperty() {
+        return points;
     }
     public ObjectProperty<OccurrencePattern> occurrencePatternProperty() {
         return occurrencePattern;
@@ -268,6 +376,12 @@ public class TwigTask {
     public ObjectProperty<TwigInterval> intervalProperty() {
         return interval;
     }
+    public ObservableList<TwigSubTask> getSubTasks() {
+        return subTasks;
+    }
+    public BooleanProperty subTasksExpandedProperty() {
+        return subTasksExpanded;
+    }
     public ObjectProperty<LocalTime> dueTimeProperty() {
         return dueTime;
     }
@@ -277,10 +391,20 @@ public class TwigTask {
         return TaskTwig.supplyWithFXSafety(name::get);
     }
 
-    @JsonGetter("category")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     public TaskCategory getCategory() {
         return TaskTwig.supplyWithFXSafety(category::get);
+    }
+
+    @JsonGetter("category")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String getCategoryName() {
+//        return TaskTwig.supplyWithFXSafety(() -> Optional.ofNullable(category.get()).map(TaskCategory::getName).orElse(""));
+        return TaskTwig.supplyWithFXSafety(() -> category.get().getName());
+    }
+
+    @JsonGetter("points")
+    public int getPoints() {
+        return TaskTwig.supplyWithFXSafety(points::get);
     }
 
     @JsonGetter("occurrencePattern")
@@ -298,6 +422,18 @@ public class TwigTask {
         return TaskTwig.supplyWithFXSafety(interval::get);
     }
 
+    @JsonGetter("subTasks")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public  List<TwigSubTask> getSubTasksJson() {
+        return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(subTasks));
+    }
+
+    @JsonGetter("expanded")
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public boolean isExpanded() {
+        return TaskTwig.supplyWithFXSafety(subTasksExpanded::get);
+    }
+
     @JsonGetter("dueTime")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public LocalTime getDueTime() {
@@ -308,7 +444,18 @@ public class TwigTask {
         TaskTwig.setWithFXSafety(this.name::set, name);
     }
     public void setCategory(@Nullable TaskCategory category) {
-        TaskTwig.setWithFXSafety(this.category::set, category);
+        TaskTwig.runWithFXSafety(() -> {
+            if (this.category.get() != null)
+                this.category.get().tasksProperty().remove(this);
+
+            this.category.set(category);
+
+            if (category != null)
+                category.tasksProperty().add(this);
+        });
+    }
+    public void setPoints(int points) {
+        TaskTwig.setWithFXSafety(this.points::set, points);
     }
     public void setOccurrencePattern(@NotNull TwigTask.OccurrencePattern occurrencePattern) {
         TaskTwig.setWithFXSafety(this.occurrencePattern::set, occurrencePattern);
@@ -318,6 +465,9 @@ public class TwigTask {
     }
     public void setInterval(@NotNull TwigInterval interval) {
         TaskTwig.setWithFXSafety(this.interval::set, interval);
+    }
+    public void setSubTasksExpanded(boolean expanded) {
+        TaskTwig.setWithFXSafety(this.subTasksExpanded::set, expanded);
     }
     public void setDueTime(@Nullable LocalTime dueTime) {
         TaskTwig.setWithFXSafety(this.dueTime::set, dueTime);
@@ -329,5 +479,22 @@ public class TwigTask {
     }
     private void setLastDone(@Nullable LocalDate lastDone) {
         TaskTwig.setWithFXSafety(this.lastDone::set, lastDone);
+    }
+
+    public void hashContents(MessageDigest digest) {
+        // TODO: implement hashing
+    }
+
+    public String toString() {
+        return "TwigTask[" +
+                "name=" + getName() +
+                ", category=" + Optional.ofNullable(getCategory()).map(TaskCategory::getName).orElse("null") +
+                ", interval=" + getInterval() +
+                ", lastDone=" + getLastDone() +
+                ", subTasks=" + getSubTasks() +
+                ", occurrencePattern=" + getOccurrencePattern() +
+                ", extendPattern=" + getExtendPattern() +
+                ", dueTime=" + getDueTime() +
+                "]";
     }
 }

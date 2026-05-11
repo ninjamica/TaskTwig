@@ -33,7 +33,7 @@ public class TaskCategory {
 
     private final StringProperty name = new SimpleStringProperty();
     private final ObjectProperty<Paint> paint = new SimpleObjectProperty<>();
-    private final ObservableList<Task> tasks = FXCollections.observableArrayList();
+    private final ObservableList<TwigTask> tasks = FXCollections.observableArrayList();
 
     public TaskCategory(String name, Paint paint) {
         this.name.set(name);
@@ -85,11 +85,11 @@ public class TaskCategory {
         return getPaint().toString();
     }
 
-    public ObservableList<Task> tasksProperty() {
+    public ObservableList<TwigTask> tasksProperty() {
         return tasks;
     }
 
-    public List<Task> getTasks() {
+    public List<TwigTask> getTasks() {
         return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(tasks));
     }
 

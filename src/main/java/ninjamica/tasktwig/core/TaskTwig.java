@@ -343,6 +343,14 @@ public class TaskTwig implements Serializable {
         return taskList;
     }
 
+    public ObservableList<TwigTask> twigTaskList() {
+        return twigTaskList;
+    }
+
+    public ObservableList<TaskCategory> getTaskCategoryList() {
+        return taskCategoryList;
+    }
+
     public ObservableList<TwigList> twigLists() {
         return twigLists;
     }

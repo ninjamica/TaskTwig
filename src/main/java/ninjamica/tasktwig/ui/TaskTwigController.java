@@ -28,6 +28,7 @@ import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
+import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.control.ScrollPane.ScrollBarPolicy;
@@ -96,6 +97,8 @@ public class TaskTwigController {
 
     private TableView<Routine> routineTable;
 
+    private TaskCategoryList twigTaskCategoryList;
+
     private ListView<LocalDate> journalListView;
     private TextArea journalTextArea;
     private ListView<String> journalRoutineList;
@@ -153,6 +156,7 @@ public class TaskTwigController {
             createExerciseTab(),
             createTaskTab(),
             createRoutineTab(),
+            createTwigTaskTab(),
             createListTab(),
             createJournalTab(),
             createSettingsTab()
@@ -1096,6 +1100,17 @@ public class TaskTwigController {
         return tab;
     }
 
+    public Tab createTwigTaskTab() {
+        Tab tab = new Tab("Twig Tasks");
+        tab.setGraphic(new FontIcon(FontAwesomeSolid.TASKS));
+
+        twigTaskCategoryList = new TaskCategoryList();
+
+        tab.setContent(new ScrollPane(twigTaskCategoryList));
+
+        return tab;
+    }
+
     private Tab createListTab() {
         Tab tab = new Tab("Lists");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.LIST));
@@ -1487,6 +1502,9 @@ public class TaskTwigController {
 
         routineTable.setItems(twig.routineList());
         subscriptions = subscriptions.and(() -> routineTable.setItems(null));
+
+        twigTaskCategoryList.setCategories(twig.getTaskCategoryList());
+        subscriptions = subscriptions.and(() -> twigTaskCategoryList.setCategories(null));
 
         MapChangeListener<LocalDate, Journal> journalChangeListener = change ->
                 journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted(Comparator.reverseOrder()));
@@ -2001,6 +2019,23 @@ public class TaskTwigController {
         backgroundService.syncNow();
     }
 
+    static void enableStyle(Node node, String style) {
+        ObservableList<String> styleClass = node.getStyleClass();
+        if (!styleClass.contains(style)) {
+            styleClass.add(style);
+        }
+    }
+
+    static void disableStyle(Node node, String style) {
+        node.getStyleClass().remove(style);
+    }
+
+    static void setStyleStatus(Node node, String style, boolean set) {
+        if(set)
+            enableStyle(node, style);
+        else
+            disableStyle(node, style);
+    }
 
 
     static class timeTableCell<T> extends TableCell<T, LocalTime> {

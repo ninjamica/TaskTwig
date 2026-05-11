@@ -14,6 +14,7 @@ module ninjamica.tasktwig.tasktwig {
     requires com.gluonhq.attach.browser;
     requires com.fasterxml.jackson.core;
     requires it.unimi.dsi.fastutil.core;
+    requires java.desktop;
 
     exports ninjamica.tasktwig.core;
     exports ninjamica.tasktwig.ui;
