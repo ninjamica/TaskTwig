@@ -1,23 +1,28 @@
 package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.BooleanExpression;
-import javafx.beans.property.*;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import org.jetbrains.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 @JsonIncludeProperties({"name", "lastDone", "dueTime"})
+@JsonPropertyOrder({"name", "lastDone", "dueTime"})
 public class TwigSubTask implements TaskInterface {
     private final ObjectProperty<TwigTask> parentTask = new SimpleObjectProperty<>();
     private final StringProperty name = new SimpleStringProperty();
@@ -92,11 +97,13 @@ public class TwigSubTask implements TaskInterface {
     public String getName() {
         return TaskTwig.supplyWithFXSafety(name::get);
     }
-    @JsonGetter("dueTIme")
+    @JsonGetter("dueTime")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public LocalTime getDueTime() {
         return TaskTwig.supplyWithFXSafety(dueTime::get);
     }
     @JsonGetter("lastDone")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public LocalDate getLastDone() {
         return TaskTwig.supplyWithFXSafety(lastDone::get);
     }
@@ -122,6 +129,14 @@ public class TwigSubTask implements TaskInterface {
     }
     public ObjectProperty<LocalTime> dueTimeProperty() {
         return dueTime;
+    }
+
+    public void hashContents(MessageDigest digest) {
+        digest.update(getName().getBytes(StandardCharsets.UTF_8));
+        Optional.ofNullable(getLastDone()).ifPresent(
+                date -> digest.update(date.toString().getBytes(StandardCharsets.UTF_8)));
+        Optional.ofNullable(getDueTime()).ifPresent(
+                time -> digest.update(time.toString().getBytes(StandardCharsets.UTF_8)));
     }
 
     public String toString() {

@@ -82,7 +82,6 @@ public class TaskTwig implements Serializable {
     private final TwigFile ROUTINE_FILE = new TwigFile("/data/routine.json");
     private final TwigFile LIST_FILE = new TwigFile("/data/list.json");
     private final TwigFile JOURNAL_FILE = new TwigFile("/data/journal.json");
-    private final TwigFile TWIG_TASK_FILE = new TwigFile("/data/twig_task.json");
 
     public enum TwigDataFile {
         SLEEP,
@@ -583,34 +582,37 @@ public class TaskTwig implements Serializable {
         // Parse tasks
         this.taskList = FXCollections.observableArrayList(task -> new Observable[] {task.intervalProperty(), task.inProgressObservable()});
         this.taskCategoryList = FXCollections.observableArrayList();
-        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
-            Task.parseDataFile(parser, taskList, taskCategoryList);
-        } catch (TwigJsonAssertException | JacksonIOException e) {
-            System.err.println(e.getLocalizedMessage());
-            this.taskList.clear();
-        }
+//        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
+//            Task.parseDataFile(parser, taskList, taskCategoryList);
+//        } catch (TwigJsonAssertException | JacksonIOException e) {
+//            System.err.println(e.getLocalizedMessage());
+//            this.taskList.clear();
+//        }
 
-
-        this.twigTaskList = FXCollections.observableArrayList();
+        twigTaskList = FXCollections.observableArrayList(
+                task -> new Observable[] {task.isDoneObservable(), task.isTodayObservable()});
         try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
             parser.nextToken();
 
-            TaskTwig.requireJsonProperty(parser, "version");
+            assertEqual(parser.nextName(), "version");
             int version =  parser.nextIntValue(0);
 
-            if (version >= 9) {
-                TaskTwig.requireJsonProperty(parser, "categories");
-
-                while(parser.nextToken() != JsonToken.END_ARRAY) {}
-            }
-
-            TaskTwig.requireJsonProperty(parser, "tasks");
+            assertEqual(parser.nextName(), "categories");
             parser.nextToken();
-            TaskTwig.parseJsonList(twigTaskList, parser, node -> new TwigTask(node, version));
+            TaskCategory.clearCategoryMap();
+            TaskTwig.parseJsonList(taskCategoryList, parser, node ->  new TaskCategory(node, version));
+
+            assertEqual(parser.nextName(), "tasks");
+            parser.nextToken();
+            parseJsonList(twigTaskList, parser, node -> new TwigTask(node, version));
+
         } catch (TwigJsonAssertException | JacksonIOException e) {
             System.err.println(e.getLocalizedMessage());
-//            this.twigTaskList.clear();
+            twigTaskList.clear();
         }
+//        for (Task task : taskList) {
+//            twigTaskList.add(new TwigTask(task));
+//        }
 
         // Parse lists
         this.twigLists = FXCollections.observableArrayList();
@@ -636,13 +638,20 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "routines");
             parser.nextToken();
-            parseJsonList(this.routineList, parser, node -> {
-                twigTaskList.add(new TwigTask(node, version));
-                return new Routine(node, version);
-            });
+            parseJsonList(this.routineList, parser, node -> new Routine(node, version));
         } catch (TwigJsonAssertException | JacksonIOException e) {
             System.err.println(e.getLocalizedMessage());
             this.routineList.clear();
+        }
+
+//        for (Routine routine : routineList) {
+//            twigTaskList.add(new TwigTask(routine));
+//        }
+
+        for (TwigTask twigTask : twigTaskList) {
+            if (twigTask.getCategory() != null) {
+                twigTask.getCategory().tasksProperty().add(twigTask);
+            }
         }
 
         // Parse journals
@@ -698,10 +707,29 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case TASK -> {
+//                    try (JsonGenerator generator = mapper.createGenerator(TASK_FILE.file(), JsonEncoding.UTF8)) {
+//                        generator.writeStartObject();
+//
+//                        generator.writeNumberProperty("version", Task.VERSION);
+//
+//                        generator.writeArrayPropertyStart("categories");
+//                        for (TaskCategory category : taskCategoryList) {
+//                            generator.writePOJO(category);
+//                        }
+//                        generator.writeEndArray();
+//
+//                        generator.writeArrayPropertyStart("tasks");
+//                        for (Task task : taskList) {
+//                            generator.writePOJO(task);
+//                        }
+//                        generator.writeEndArray();
+//
+//                        generator.writeEndObject();
+//                    }
                     try (JsonGenerator generator = mapper.createGenerator(TASK_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
-                        generator.writeNumberProperty("version", Task.VERSION);
+                        generator.writeNumberProperty("version", TwigTask.VERSION);
 
                         generator.writeArrayPropertyStart("categories");
                         for (TaskCategory category : taskCategoryList) {
@@ -710,7 +738,7 @@ public class TaskTwig implements Serializable {
                         generator.writeEndArray();
 
                         generator.writeArrayPropertyStart("tasks");
-                        for (Task task : taskList) {
+                        for (TwigTask task : twigTaskList) {
                             generator.writePOJO(task);
                         }
                         generator.writeEndArray();
@@ -766,18 +794,6 @@ public class TaskTwig implements Serializable {
                     }
                 }
             }
-        }
-
-        try (JsonGenerator generator = mapper.createGenerator(TWIG_TASK_FILE.file(), JsonEncoding.UTF8)) {
-            generator.writeStartObject();
-
-            generator.writeArrayPropertyStart("tasks");
-            for (TwigTask task : twigTaskList) {
-                generator.writePOJO(task);
-            }
-            generator.writeEndArray();
-
-            generator.writeEndObject();
         }
 
         if (!saveFiles.isEmpty()) {
@@ -862,7 +878,10 @@ public class TaskTwig implements Serializable {
                 case TASK ->  {
                     digest.update((byte) Task.VERSION);
 
-                    for (Task task : supplyWithFXSafety(() -> new ArrayList<>(taskList))) {
+                    for (TaskCategory category : supplyWithFXSafety(() -> new ArrayList<>(taskCategoryList))) {
+                        category.hashContents(digest);
+                    }
+                    for (TwigTask task : supplyWithFXSafety(() -> new ArrayList<>(twigTaskList))) {
                         task.hashContents(digest);
                     }
                 }

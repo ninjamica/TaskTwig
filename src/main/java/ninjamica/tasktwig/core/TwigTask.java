@@ -3,6 +3,7 @@ package ninjamica.tasktwig.core;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.BooleanExpression;
@@ -13,6 +14,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -23,7 +26,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 @JsonIncludeProperties({"name", "category", "points", "occurrencePattern", "extend", "interval", "dueTime", "lastDone", "expanded", "subTasks"})
+@JsonPropertyOrder({"name", "category", "points", "occurrencePattern", "extend", "interval", "dueTime", "lastDone", "expanded", "subTasks"})
 public class TwigTask implements TaskInterface {
+    public static final int VERSION = 10;
 
     public enum OccurrencePattern {
         OCCUR_ON,
@@ -58,7 +63,7 @@ public class TwigTask implements TaskInterface {
                     @Nullable List<TwigSubTask> subTasks,  boolean subTasksExpanded, LocalDate lastDone) {
         this.name.set(name);
         this.points.set(points);
-        setCategory(category);
+        this.category.set(category);
         this.occurrencePattern.set(occurrencePattern);
         this.extendPattern.set(extendPattern);
         this.interval.set(interval);
@@ -131,114 +136,119 @@ public class TwigTask implements TaskInterface {
                 lastDone = node.optional("lastDone")
                         .map(lastDoneNode -> LocalDate.parse(lastDoneNode.asString())).orElse(null);
             }
-            case 1,2,3,4,5,6,7,8,9 -> {
-                if (node.has("priority")) {
-                    Task task = new Task(node, version);
-                    var taskInterval = task.getInterval();
-
-                    name =  task.getName();
-                    category = task.getCategory();
-                    occurrencePattern = OccurrencePattern.DUE_BY;
-                    dueTime = task.getDueTime();
-                    expanded = task.isExpanded();
-                    lastDone = taskInterval.getLastDone();
-
-                    switch (taskInterval) {
-                        case TaskInterval.NoInterval noInterval -> {
-                            extendPattern = ExtendPattern.AUTO;
-                            interval = new TwigInterval.NoRepeat(TwigInterval.NoRepeat.NO_DATE);
-                        }
-                        case TaskInterval.SingleDateInterval singleDateInterval -> {
-                            extendPattern = ExtendPattern.AUTO;
-                            interval = new TwigInterval.NoRepeat(singleDateInterval.getDueDate());
-                        }
-                        case TaskInterval.DayInterval dayInterval -> {
-                            if (dayInterval.isRepeatFromLastDone()) {
-                                extendPattern = ExtendPattern.FROM_COMPLETION;
-                                interval = new TwigInterval.PeriodInterval(
-                                        Period.ofDays(dayInterval.getInterval()),
-                                        TwigInterval.RepeatPattern.FROM_REF,
-                                        false, lastDone
-                                );
-                            }
-                            else {
-                                extendPattern = ExtendPattern.AUTO;
-                                interval = new TwigInterval.PeriodInterval(
-                                        Period.ofDays(dayInterval.getInterval()),
-                                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
-                                        true, lastDone
-                                );
-                            }
-                        }
-                        case TaskInterval.WeekInterval weekInterval -> {
-                            extendPattern = ExtendPattern.AUTO;
-                            interval = new TwigInterval.WeekInterval(
-                                    1, weekInterval.getDayOfWeekBitmap(),
-                                    TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
-                                    true, lastDone
-                            );
-                        }
-                        case TaskInterval.MonthInterval monthInterval -> {
-                            extendPattern = ExtendPattern.AUTO;
-                            interval = new TwigInterval.MonthInterval(
-                                    1, TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
-                                    true, lastDone, monthInterval.getDates().toArray(Integer[]::new)
-                            );
-                        }
-                    }
-
-                    for (Task subTask : task.getChildrenJson()) {
-                        subTasks.add(new TwigSubTask(
-                                subTask.getName(),
-                                subTask.isDone() ? TaskTwig.today() : null,
-                                subTask.getDueTime(),
-                                null
-                        ));
-                    }
-                }
-                else {
-                    if (version > 3)
-                        throw new TaskTwig.TwigJsonVersionException("Invalid version for Routine upgrading to TwigTask: " + version);
-
-                    Routine routine = new Routine(node, version);
-
-                    name = routine.getName();
-                    category = TaskCategory.getCategoryFromName("Other");
-                    occurrencePattern = OccurrencePattern.OCCUR_ON;
-                    extendPattern = ExtendPattern.AUTO;
-                    dueTime = routine.getDueTime();
-
-                    switch (routine.getInterval()) {
-                        case RoutineInterval.DailyInterval dailyInterval -> {
-                            lastDone = dailyInterval.getLastDone();
-                            interval = new TwigInterval.DailyInterval();
-                        }
-                        case RoutineInterval.DayInterval dayInterval -> {
-                            lastDone = dayInterval.getLastDone();
-                            interval = new TwigInterval.PeriodInterval(
-                                    Period.ofDays(dayInterval.getInterval()),
-                                    TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
-                                    true, lastDone
-                            );
-                        }
-                        case RoutineInterval.WeekInterval weekInterval -> {
-                            lastDone = weekInterval.getLastDone();
-                            interval = new TwigInterval.WeekInterval(
-                                    1, weekInterval.getBitmap(),
-                                    TwigInterval.RepeatPattern.REPEAT_ON_AFTER, true, lastDone
-                            );
-                        }
-                    }
-                }
-            }
             default -> throw new TaskTwig.TwigJsonVersionException("Invalid version for TwigTask: " + version);
         }
 
         this(name, category, points, occurrencePattern, extendPattern, interval, dueTime, subTasks, expanded, lastDone);
     }
 
-    private void updateIntervalPatterns(OccurrencePattern occurrence, ExtendPattern extend) {
-        if (getInterval() instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
+    public TwigTask(Task task) {
+        ExtendPattern extendPattern;
+        TwigInterval interval;
+        List<TwigSubTask> subTasks = new ArrayList<>();
+
+        var taskInterval = task.getInterval();
+
+        String name =  task.getName();
+        TaskCategory category = task.getCategory();
+        OccurrencePattern occurrencePattern = OccurrencePattern.DUE_BY;
+        LocalTime dueTime = task.getDueTime();
+        boolean expanded = task.isExpanded();
+        LocalDate lastDone = taskInterval.getLastDone();
+
+        switch (taskInterval) {
+            case TaskInterval.NoInterval noInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.NoRepeat(TwigInterval.NoRepeat.NO_DATE);
+            }
+            case TaskInterval.SingleDateInterval singleDateInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.NoRepeat(singleDateInterval.getDueDate());
+            }
+            case TaskInterval.DayInterval dayInterval -> {
+                if (dayInterval.isRepeatFromLastDone()) {
+                    extendPattern = ExtendPattern.FROM_COMPLETION;
+                    interval = new TwigInterval.PeriodInterval(
+                            Period.ofDays(dayInterval.getInterval()),
+                            TwigInterval.RepeatPattern.FROM_REF,
+                            false, lastDone
+                    );
+                }
+                else {
+                    extendPattern = ExtendPattern.AUTO;
+                    interval = new TwigInterval.PeriodInterval(
+                            Period.ofDays(dayInterval.getInterval()),
+                            TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                            true, lastDone
+                    );
+                }
+            }
+            case TaskInterval.WeekInterval weekInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.WeekInterval(
+                        1, weekInterval.getDayOfWeekBitmap(),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone
+                );
+            }
+            case TaskInterval.MonthInterval monthInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.MonthInterval(
+                        1, TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone, monthInterval.getDates().toArray(Integer[]::new)
+                );
+            }
+        }
+
+        for (Task subTask : task.getChildrenJson()) {
+            subTasks.add(new TwigSubTask(
+                    subTask.getName(),
+                    subTask.isDone() ? TaskTwig.today() : null,
+                    subTask.getDueTime(),
+                    null
+            ));
+        }
+
+        this(name, category, 1, occurrencePattern, extendPattern, interval, dueTime, subTasks, expanded, lastDone);
+    }
+
+    public TwigTask(Routine routine) {
+        TwigInterval interval;
+        LocalDate lastDone;
+
+        String name = routine.getName();
+        TaskCategory category = TaskCategory.getCategoryFromName("Routines");
+        OccurrencePattern occurrencePattern = OccurrencePattern.OCCUR_ON;
+        ExtendPattern extendPattern = ExtendPattern.AUTO;
+        LocalTime dueTime = routine.getDueTime();
+
+        switch (routine.getInterval()) {
+            case RoutineInterval.DailyInterval dailyInterval -> {
+                lastDone = dailyInterval.getLastDone();
+                interval = new TwigInterval.DailyInterval();
+            }
+            case RoutineInterval.DayInterval dayInterval -> {
+                lastDone = dayInterval.getLastDone();
+                interval = new TwigInterval.PeriodInterval(
+                        Period.ofDays(dayInterval.getInterval()),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone
+                );
+            }
+            case RoutineInterval.WeekInterval weekInterval -> {
+                lastDone = weekInterval.getLastDone();
+                interval = new TwigInterval.WeekInterval(
+                        1, weekInterval.getBitmap(),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER, true, lastDone
+                );
+            }
+        }
+
+        this(name, category, 1, occurrencePattern, extendPattern, interval, dueTime, null, false, lastDone);
+    }
+
+    static void setIntervalPatterns(TwigInterval interval, OccurrencePattern occurrence, ExtendPattern extend) {
+        if (interval instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
 
             repeatInterval.setAutoRepeat(extend == ExtendPattern.AUTO);
 
@@ -254,6 +264,10 @@ public class TwigTask implements TaskInterface {
                 );
             }
         }
+    }
+
+    private void updateIntervalPatterns(OccurrencePattern occurrence, ExtendPattern extend) {
+        setIntervalPatterns(getInterval(), occurrence, extend);
     }
 
     /**
@@ -474,6 +488,7 @@ public class TwigTask implements TaskInterface {
     }
 
     @JsonGetter("lastDone")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public LocalDate getLastDone() {
         return TaskTwig.supplyWithFXSafety(lastDone::get);
     }
@@ -482,7 +497,21 @@ public class TwigTask implements TaskInterface {
     }
 
     public void hashContents(MessageDigest digest) {
-        // TODO: implement hashing
+        digest.update(getName().getBytes(StandardCharsets.UTF_8));
+        digest.update(getCategoryName().getBytes(StandardCharsets.UTF_8));
+        getInterval().hashContents(digest);
+        digest.update(ByteBuffer.allocate(4).putInt(getPoints()).array());
+        digest.update((byte) getOccurrencePattern().ordinal());
+        digest.update((byte) getExtendPattern().ordinal());
+
+        Optional.ofNullable(getDueTime()).ifPresent(
+                time -> digest.update(time.toString().getBytes(StandardCharsets.UTF_8)));
+        Optional.ofNullable(getLastDone()).ifPresent(
+                date -> digest.update(date.toString().getBytes(StandardCharsets.UTF_8)));
+
+        getSubTasksJson().forEach(subTask -> subTask.hashContents(digest));
+
+        digest.update(isExpanded() ? (byte) 1 : (byte) 0);
     }
 
     public String toString() {

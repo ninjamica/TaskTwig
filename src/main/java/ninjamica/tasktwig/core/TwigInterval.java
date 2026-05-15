@@ -17,6 +17,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
 import tools.jackson.databind.JsonNode;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Period;
@@ -103,6 +105,21 @@ public sealed abstract class TwigInterval {
 
                 return new WeekInterval(interval, map, repeatTo, autoRepeat, reference);
             }
+            case "month" -> {
+                int interval = node.required("interval").asInt();
+                RepeatPattern repeatTo = RepeatPattern.valueOf(node.required("repeatTo").asString());
+                boolean autoRepeat = node.required("autoRepeat").asBoolean();
+
+                Set<Integer> datesSet = new HashSet<>();
+                for (JsonNode dateNode : node.required("dates").asArray()) {
+                    datesSet.add(dateNode.asInt());
+                }
+
+                JsonNode referenceNode = node.required("reference");
+                LocalDate reference = referenceNode.isNull() ? null : LocalDate.parse(referenceNode.asString());
+
+                return new MonthInterval(interval, repeatTo, autoRepeat, reference, datesSet.toArray(Integer[]::new));
+            }
             default -> throw new TaskTwig.TwigJsonAssertException("unknown type in TwigInterval: " + type);
         }
     }
@@ -133,6 +150,10 @@ public sealed abstract class TwigInterval {
         return prevOccurrence;
     }
 
+    public void hashContents(MessageDigest digest) {
+        digest.update(toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     protected abstract LocalDate calcOccurrence();
     protected abstract LocalDate calcPrevOccurrence(LocalDate occurrenceDate);
 
@@ -140,8 +161,11 @@ public sealed abstract class TwigInterval {
     public LocalDate getReference() {
         return TaskTwig.supplyWithFXSafety(reference::get);
     }
-    protected void setReference(LocalDate lastOccurred) {
+    public void setReference(LocalDate lastOccurred) {
         TaskTwig.setWithFXSafety(reference::set, lastOccurred);
+    }
+    public ObjectProperty<LocalDate> referenceProperty() {
+        return reference;
     }
 
     public abstract String toString();
@@ -154,7 +178,7 @@ public sealed abstract class TwigInterval {
     }
 
     @JsonIncludeProperties({"repeatTo", "autoRepeat"})
-    public static abstract non-sealed class ConfigRepeatInterval extends TwigInterval {
+    public static abstract sealed class ConfigRepeatInterval extends TwigInterval {
         private final ObjectProperty<RepeatPattern> repeatPattern;
         private final BooleanProperty autoRepeat;
 
@@ -241,6 +265,10 @@ public sealed abstract class TwigInterval {
             super(eventDate, true);
         }
 
+        public NoRepeat() {
+            this(NO_DATE);
+        }
+
         @Override
         protected LocalDate calcOccurrence() {
             return getReference();
@@ -251,8 +279,8 @@ public sealed abstract class TwigInterval {
             return null;
         }
 
-        public void setDate(LocalDate date) {
-            setReference(date);
+        public boolean hasNoDate() {
+            return NO_DATE.equals(getReference());
         }
 
         public String toString() {
@@ -300,6 +328,15 @@ public sealed abstract class TwigInterval {
             var periodProp = new SimpleObjectProperty<>(period);
             super(repeatPattern, autoRepeat, true, reference, true, periodProp, TaskTwig.todayObservable());
             this.period = periodProp;
+        }
+
+        public PeriodInterval() {
+            this(Period.ofDays(1), RepeatPattern.REPEAT_ON_AFTER, false, TaskTwig.today());
+        }
+
+        public PeriodInterval(TwigTask referenceTask) {
+            this();
+            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
         }
 
         @Override
@@ -369,6 +406,11 @@ public sealed abstract class TwigInterval {
         private final ReadOnlyObjectWrapper<Byte> dayOfWeekMap;
         private final IntegerProperty weekInterval;
 
+        public WeekInterval(TwigTask referenceTask) {
+            this(1, RepeatPattern.REPEAT_ON_AFTER, false);
+            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
+        }
+
         public WeekInterval(int weekInterval, RepeatPattern repeatPattern, boolean autoRepeat, DayOfWeek... days) {
             this(weekInterval, parseDaysOfWeek(days), repeatPattern, autoRepeat, TaskTwig.today());
         }
@@ -377,7 +419,7 @@ public sealed abstract class TwigInterval {
             if (weekInterval < 1)
                 throw new IllegalArgumentException("weekInterval must be >= 1");
 
-            if (dayMap <= 0)
+            if (dayMap < 0)
                 throw new IllegalArgumentException(
                         "dayMap must be only have the lowest 7 bits set (highest bit cannot be set) and must have at least one bit set");
 
@@ -552,6 +594,11 @@ public sealed abstract class TwigInterval {
             this(monthInterval, repeatPattern, autoRepeat, TaskTwig.today(), dates);
         }
 
+        public MonthInterval(TwigTask referenceTask) {
+            this(1, RepeatPattern.REPEAT_ON_AFTER, false);
+            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
+        }
+
         @Override
         protected LocalDate calcOccurrence() {
             if (getAutoRepeat())
@@ -651,6 +698,15 @@ public sealed abstract class TwigInterval {
         }
 
         public void setDates(@Range(from = 1, to = 31) Integer... dates) {
+            TaskTwig.runWithFXSafety(() -> {
+                this.dates.clear();
+                for (int date : dates) {
+                    if (date > 0 && date <= 31)
+                        this.dates.add(date);
+                }
+            });
+        }
+        public void setDates(@Range(from = 1, to = 31) Set<Integer> dates) {
             TaskTwig.runWithFXSafety(() -> {
                 this.dates.clear();
                 for (int date : dates) {

@@ -1,7 +1,6 @@
 package ninjamica.tasktwig.ui;
 
 import atlantafx.base.controls.*;
-import atlantafx.base.controls.Calendar;
 import atlantafx.base.theme.*;
 import atlantafx.base.util.Animations;
 import com.dropbox.core.DbxException;
@@ -23,7 +22,6 @@ import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
-import javafx.event.EventHandler;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -31,15 +29,16 @@ import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
-import javafx.scene.control.ScrollPane.ScrollBarPolicy;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.image.ImageView;
-import javafx.scene.input.*;
+import javafx.scene.input.DataFormat;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
-import javafx.scene.text.Text;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
@@ -58,13 +57,15 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.text.DecimalFormat;
 import java.text.ParseException;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 @SuppressWarnings("OctalInteger")
@@ -74,8 +75,8 @@ public class TaskTwigController {
     private final VBox contentPane;
     private final ModalPane modalPane;
 
-    private ListView<Routine> todayRoutineListView;
-    private TreeView<Task> todayTaskTreeView;
+    private TaskCategoryList todayTaskCategoryList;
+    private TaskCategoryView todayTaskDoneBox;
     private Button todaySleepButton;
     private Button todayExerciseButton;
     private TextArea todayJournalTextArea;
@@ -91,13 +92,12 @@ public class TaskTwigController {
     private Label workoutStatusLabel;
     private TableView<Workout> workoutTableView;
 
-    private TaskPropertyPane taskContent;
-    private TreeTableView<Task> taskTreeTable;
+    private TreeTableView<TaskInterface> taskTreeTableView;
+    private ListChangeMapper<TwigTask, TreeItem<TaskInterface>> taskListChangeMapper;
+
+    private DraggableListBox<TaskCategory, TaskCategoryBox> taskCategoryListBox;
+
     private TreeView<Object> listTree;
-
-    private TableView<Routine> routineTable;
-
-    private TaskCategoryList twigTaskCategoryList;
 
     private ListView<LocalDate> journalListView;
     private TextArea journalTextArea;
@@ -151,15 +151,14 @@ public class TaskTwigController {
         
         ToolBar toolBar = initToolBar();
         TabPane tabPane = new TabPane(
-            createTodayTab(),
-            createSleepTab(),
-            createExerciseTab(),
-            createTaskTab(),
-            createRoutineTab(),
-            createTwigTaskTab(),
-            createListTab(),
-            createJournalTab(),
-            createSettingsTab()
+                createTodayTab(),
+                createSleepTab(),
+                createExerciseTab(),
+                createTaskTab(),
+                createTaskCategoryTab(),
+                createListTab(),
+                createJournalTab(),
+                createSettingsTab()
         );
         tabPane.setTabClosingPolicy(TabClosingPolicy.UNAVAILABLE);
         
@@ -199,91 +198,91 @@ public class TaskTwigController {
         tab.setContent(todayGridPane);
 
         // Routines
-        Label routineLabel = new Label("Routines");
-        routineLabel.getStyleClass().add(Styles.TITLE_4);
-        HBox routineLabelBox = new HBox(10, new FontIcon(FontAwesomeSolid.CALENDAR_DAY), routineLabel);
-        routineLabelBox.setAlignment(Pos.CENTER);
+//        Label routineLabel = new Label("Routines");
+//        routineLabel.getStyleClass().add(Styles.TITLE_4);
+//        HBox routineLabelBox = new HBox(10, new FontIcon(FontAwesomeSolid.CALENDAR_DAY), routineLabel);
+//        routineLabelBox.setAlignment(Pos.CENTER);
         
-        todayRoutineListView = new ListView<>();
-        todayRoutineListView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
-        todayRoutineListView.setCellFactory(col -> new ListCell<>() {
-            private final CheckBox checkBox = new CheckBox();
-            private final Text name = new Text();
-            private final Text dueText = new Text();
-            private final HBox pane = new HBox(7);
-            {
-                setStyle("-fx-background: transparent");
-                checkBox.setFocusTraversable(false);
-                dueText.getStyleClass().add(Styles.TEXT_SUBTLE);
+//        todayRoutineListView = new ListView<>();
+//        todayRoutineListView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
+//        todayRoutineListView.setCellFactory(col -> new ListCell<>() {
+//            private final CheckBox checkBox = new CheckBox();
+//            private final Text name = new Text();
+//            private final Text dueText = new Text();
+//            private final HBox pane = new HBox(7);
+//            {
+//                setStyle("-fx-background: transparent");
+//                checkBox.setFocusTraversable(false);
+//                dueText.getStyleClass().add(Styles.TEXT_SUBTLE);
+//
+//                setOnMouseEntered(event -> {name.setUnderline(true); dueText.setUnderline(true);});
+//                setOnMouseExited(event -> {name.setUnderline(false); dueText.setUnderline(false);});
+//
+//                EventHandler<MouseEvent> setDoneCallback = event -> {
+//                    var item = getItem();
+//                    if (item != null) {
+//                        item.setDone(!item.isDoneToday());
+//                        updateFormatting(item);
+//                    }
+//                };
+//                setOnMouseClicked(setDoneCallback);
+//                checkBox.setOnMouseClicked(setDoneCallback);
+//
+//                pane.getChildren().addAll(checkBox, name, dueText);
+//            }
+//
+//            @Override
+//            protected void updateItem(Routine item, boolean empty) {
+//                super.updateItem(item, empty);
+//
+//                setText(null);
+//                setBackground(Background.EMPTY);
+//
+//                name.textProperty().unbind();
+//                dueText.textProperty().unbind();
+//
+//                if (item == null || empty) {
+//                    setGraphic(null);
+//                }
+//                else {
+//                    name.textProperty().bind(item.name());
+//                    dueText.textProperty().bind(item.dueTime().map(time -> {
+//                        if (time == null)
+//                            return "";
+//                        else
+//                            return "by " + timeFormat.format(time);
+//                    }));
+//
+//                    updateFormatting(item);
+//                    setGraphic(pane);
+//                }
+//            }
+//
+//            private void updateFormatting(Routine item) {
+//                boolean done = item.isDoneToday();
+//                checkBox.setSelected(done);
+//
+//                if (done) {
+//                    if (! name.getStyleClass().contains(Styles.TEXT_STRIKETHROUGH))
+//                        name.getStyleClass().addAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
+//                    pane.getChildren().remove(dueText);
+//                }
+//                else {
+//                    name.getStyleClass().removeAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
+//                    if (!pane.getChildren().contains(dueText))
+//                        pane.getChildren().add(dueText);
+//                }
+//            }
+//        });
 
-                setOnMouseEntered(event -> {name.setUnderline(true); dueText.setUnderline(true);});
-                setOnMouseExited(event -> {name.setUnderline(false); dueText.setUnderline(false);});
-
-                EventHandler<MouseEvent> setDoneCallback = event -> {
-                    var item = getItem();
-                    if (item != null) {
-                        item.setDone(!item.isDoneToday());
-                        updateFormatting(item);
-                    }
-                };
-                setOnMouseClicked(setDoneCallback);
-                checkBox.setOnMouseClicked(setDoneCallback);
-
-                pane.getChildren().addAll(checkBox, name, dueText);
-            }
-
-            @Override
-            protected void updateItem(Routine item, boolean empty) {
-                super.updateItem(item, empty);
-
-                setText(null);
-                setBackground(Background.EMPTY);
-
-                name.textProperty().unbind();
-                dueText.textProperty().unbind();
-
-                if (item == null || empty) {
-                    setGraphic(null);
-                }
-                else {
-                    name.textProperty().bind(item.name());
-                    dueText.textProperty().bind(item.dueTime().map(time -> {
-                        if (time == null)
-                            return "";
-                        else
-                            return "by " + timeFormat.format(time);
-                    }));
-
-                    updateFormatting(item);
-                    setGraphic(pane);
-                }
-            }
-
-            private void updateFormatting(Routine item) {
-                boolean done = item.isDoneToday();
-                checkBox.setSelected(done);
-
-                if (done) {
-                    if (! name.getStyleClass().contains(Styles.TEXT_STRIKETHROUGH))
-                        name.getStyleClass().addAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
-                    pane.getChildren().remove(dueText);
-                }
-                else {
-                    name.getStyleClass().removeAll(Styles.TEXT_SUBTLE, Styles.TEXT_STRIKETHROUGH);
-                    if (!pane.getChildren().contains(dueText))
-                        pane.getChildren().add(dueText);
-                }
-            }
-        });
-
-        Card routineCard = new Card();
-        routineCard.setHeader(routineLabelBox);
-        routineCard.setBody(todayRoutineListView);
-        routineCard.setStyle("-fx-background: -color-fg-default");
-        routineCard.getStyleClass().addAll(Styles.ELEVATED_2);
-        todayGridPane.add(routineCard, 0, 0, 1, 2);
-        GridPane.setHgrow(routineCard, Priority.ALWAYS);
-        GridPane.setVgrow(routineCard, Priority.ALWAYS);
+//        Card routineCard = new Card();
+//        routineCard.setHeader(routineLabelBox);
+//        routineCard.setBody(todayRoutineListView);
+//        routineCard.setStyle("-fx-background: -color-fg-default");
+//        routineCard.getStyleClass().addAll(Styles.ELEVATED_2);
+//        todayGridPane.add(routineCard, 0, 0, 1, 2);
+//        GridPane.setHgrow(routineCard, Priority.ALWAYS);
+//        GridPane.setVgrow(routineCard, Priority.ALWAYS);
 
         // Tasks
         Label taskLabel = new Label("Tasks");
@@ -291,106 +290,109 @@ public class TaskTwigController {
         HBox taskLabelBox = new HBox(10, new FontIcon(FontAwesomeSolid.TASKS), taskLabel);
         taskLabelBox.setAlignment(Pos.CENTER);
         
-        todayTaskTreeView = new TreeView<>();
-        todayTaskTreeView.setShowRoot(false);
-        todayTaskTreeView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
-        todayTaskTreeView.setRoot(new TreeItem<>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
-        todayTaskTreeView.setCellFactory(treeView -> new TreeCell<>() {
-            private Subscription sub = Subscription.EMPTY;
+//        todayTaskTreeView = new TreeView<>();
+//        todayTaskTreeView.setShowRoot(false);
+//        todayTaskTreeView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
+//        todayTaskTreeView.setRoot(new TreeItem<>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
+//        todayTaskTreeView.setCellFactory(treeView -> new TreeCell<>() {
+//            private Subscription sub = Subscription.EMPTY;
+//
+//            private final Text name = new Text();
+//            private final Text dueText = new Text();
+//            private final HBox pane = new HBox(7);
+//            private final DoneCheckBox checkBox = new DoneCheckBox(done -> {
+//                if (getItem() != null && !isEmpty()) {
+//                    getItem().setDone(done);
+//                }
+//            });
+//
+//            {
+//                name.getStyleClass().add(Styles.TEXT);
+//                dueText.getStyleClass().add(Styles.TEXT);
+//
+//                checkBox.setFocusTraversable(false);
+//                checkBox.selectedProperty().subscribe(selected -> updateFormatting(getItem()));
+//
+//                setOnMouseEntered(event -> { name.setUnderline(true); dueText.setUnderline(true); });
+//                setOnMouseExited(event -> { name.setUnderline(false); dueText.setUnderline(false); });
+//                setOnMouseClicked(event -> {if (getItem() != null) getItem().toggleDone();});
+//
+//                pane.getChildren().addAll(checkBox, name, dueText);
+//            }
+//
+//            @Override
+//            protected void updateItem(Task item, boolean empty) {
+//                super.updateItem(item, empty);
+//
+//                setText(null);
+//                setBackground(Background.EMPTY);
+//                name.textProperty().unbind();
+//                checkBox.selectedProperty().unbind();
+//
+//                sub.unsubscribe();
+//                sub = Subscription.EMPTY;
+//
+//                if (item == null || empty) {
+//                    setGraphic(null);
+//                }
+//                else {
+//                    name.textProperty().bind(item.nameProperty());
+//                    checkBox.selectedProperty().bind(item.doneObservable());
+//
+//                    TreeItem<Task> treeItem = getTreeItem();
+//                    treeItem.expandedProperty().bindBidirectional(item.expandedProperty());
+//
+//                    updateFormatting(item);
+//                    setGraphic(pane);
+//
+//                    sub = Subscription.combine(
+//                            item.dueTimeProperty().subscribe(() -> updateFormatting(item)),
+//                            item.nextDueObservable().subscribe(() -> updateFormatting(item)),
+//                            item.priorityProperty().subscribe(() -> updateFormatting(item)),
+//                            () -> treeItem.expandedProperty().unbindBidirectional(item.expandedProperty())
+//                    );
+//                }
+//            }
+//
+//            private void updateFormatting(Task item) {
+//                if (item != null) {
+//                    if (item.isDone()) {
+////                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
+//                        name.getStyleClass().add(Styles.TEXT_STRIKETHROUGH);
+//                        Styles.addStyleClass(name, Styles.TEXT_MUTED, Task.priorityStyleClassList());
+//                        dueText.setText(null);
+//                    } else {
+////                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
+//                        name.getStyleClass().remove(Styles.TEXT_STRIKETHROUGH);
+//                        Styles.addStyleClass(name, Task.priorityStyleClass(item.getPriority()), Task.priorityStyleClassList());
+//
+//                        if (item.getInterval().isOverdue()) {
+//                            Styles.addStyleClass(dueText, Styles.DANGER, Task.priorityStyleClassList());
+//                            dueText.textProperty().unbind();
+//                            dueText.setText("Overdue!");
+//                        } else {
+////                            dueText.setStyle("-fx-fill: #a1a1a1");
+//                            Styles.addStyleClass(dueText, Styles.TEXT_SUBTLE, Task.priorityStyleClassList());
+//                            if (item.getInterval().nextDue() != null) {
+//                                if (item.getDueTime() != null)
+//                                    dueText.setText(shortDateFormat.format(item.getInterval().nextDue()) + " at " + timeFormat.format(item.getDueTime()));
+//                                else
+//                                    dueText.setText(shortDateFormat.format(item.getInterval().nextDue()));
+//                            } else {
+//                                dueText.setText(null);
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        });
 
-            private final Text name = new Text();
-            private final Text dueText = new Text();
-            private final HBox pane = new HBox(7);
-            private final DoneCheckBox checkBox = new DoneCheckBox(done -> {
-                if (getItem() != null && !isEmpty()) {
-                    getItem().setDone(done);
-                }
-            });
-
-            {
-                name.getStyleClass().add(Styles.TEXT);
-                dueText.getStyleClass().add(Styles.TEXT);
-
-                checkBox.setFocusTraversable(false);
-                checkBox.selectedProperty().subscribe(selected -> updateFormatting(getItem()));
-
-                setOnMouseEntered(event -> { name.setUnderline(true); dueText.setUnderline(true); });
-                setOnMouseExited(event -> { name.setUnderline(false); dueText.setUnderline(false); });
-                setOnMouseClicked(event -> {if (getItem() != null) getItem().toggleDone();});
-
-                pane.getChildren().addAll(checkBox, name, dueText);
-            }
-
-            @Override
-            protected void updateItem(Task item, boolean empty) {
-                super.updateItem(item, empty);
-
-                setText(null);
-                setBackground(Background.EMPTY);
-                name.textProperty().unbind();
-                checkBox.selectedProperty().unbind();
-
-                sub.unsubscribe();
-                sub = Subscription.EMPTY;
-
-                if (item == null || empty) {
-                    setGraphic(null);
-                }
-                else {
-                    name.textProperty().bind(item.nameProperty());
-                    checkBox.selectedProperty().bind(item.doneObservable());
-
-                    TreeItem<Task> treeItem = getTreeItem();
-                    treeItem.expandedProperty().bindBidirectional(item.expandedProperty());
-
-                    updateFormatting(item);
-                    setGraphic(pane);
-
-                    sub = Subscription.combine(
-                            item.dueTimeProperty().subscribe(() -> updateFormatting(item)),
-                            item.nextDueObservable().subscribe(() -> updateFormatting(item)),
-                            item.priorityProperty().subscribe(() -> updateFormatting(item)),
-                            () -> treeItem.expandedProperty().unbindBidirectional(item.expandedProperty())
-                    );
-                }
-            }
-
-            private void updateFormatting(Task item) {
-                if (item != null) {
-                    if (item.isDone()) {
-//                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
-                        name.getStyleClass().add(Styles.TEXT_STRIKETHROUGH);
-                        Styles.addStyleClass(name, Styles.TEXT_MUTED, Task.priorityStyleClassList());
-                        dueText.setText(null);
-                    } else {
-//                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
-                        name.getStyleClass().remove(Styles.TEXT_STRIKETHROUGH);
-                        Styles.addStyleClass(name, Task.priorityStyleClass(item.getPriority()), Task.priorityStyleClassList());
-
-                        if (item.getInterval().isOverdue()) {
-                            Styles.addStyleClass(dueText, Styles.DANGER, Task.priorityStyleClassList());
-                            dueText.textProperty().unbind();
-                            dueText.setText("Overdue!");
-                        } else {
-//                            dueText.setStyle("-fx-fill: #a1a1a1");
-                            Styles.addStyleClass(dueText, Styles.TEXT_SUBTLE, Task.priorityStyleClassList());
-                            if (item.getInterval().nextDue() != null) {
-                                if (item.getDueTime() != null)
-                                    dueText.setText(shortDateFormat.format(item.getInterval().nextDue()) + " at " + timeFormat.format(item.getDueTime()));
-                                else
-                                    dueText.setText(shortDateFormat.format(item.getInterval().nextDue()));
-                            } else {
-                                dueText.setText(null);
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        todayTaskCategoryList = new TaskCategoryList(TwigTask::isToday);
+        todayTaskDoneBox = new TaskCategoryView();
 
         Card taskCard = new Card();
         taskCard.setHeader(taskLabelBox);
-        taskCard.setBody(todayTaskTreeView);
+        taskCard.setBody(new ScrollPane(new VBox(10, todayTaskCategoryList, todayTaskDoneBox)));
         taskCard.getStyleClass().add(Styles.ELEVATED_2);
         todayGridPane.add(taskCard, 1, 0, 1, 2);
         GridPane.setHgrow(taskCard, Priority.ALWAYS);
@@ -582,237 +584,71 @@ public class TaskTwigController {
         return tab;
     }
 
-    private Tab createTaskTab() {
+    public Tab createTaskTab() {
         Tab tab = new Tab("Tasks");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.TASKS));
 
-        GridPane taskGridPane = new GridPane(0, 10);
-        taskGridPane.setPadding(new Insets(15));
-        tab.setContent(taskGridPane);
+        taskTreeTableView = new TreeTableView<>(new TreeItem<>());
+        taskTreeTableView.setRowFactory(treeView -> new TreeTableRow<>() {
 
-        Button newTaskButton = new Button("New Task");
-        newTaskButton.setOnAction(this::onNewTaskButtonClick);
-        taskGridPane.add(newTaskButton, 0, 0);
-
-        taskContent = new TaskPropertyPane();
-        ScrollPane taskDetailScrollPane = new ScrollPane(taskContent);
-        taskDetailScrollPane.setHbarPolicy(ScrollBarPolicy.NEVER);
-        taskGridPane.add(taskDetailScrollPane, 1,1);
-
-        taskTreeTable = new TreeTableView<>(new TreeItem<>(new Task("placeholder", new TaskInterval.NoInterval(), 0)));
-        taskTreeTable.getStyleClass().add(Styles.DENSE);
-        taskTreeTable.setShowRoot(false);
-        taskTreeTable.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
-        taskTreeTable.setRowFactory(table -> new TreeTableRow<>() {
-            private Subscription sub = Subscription.EMPTY;
-            private final ContextMenu contextMenu;
+            private Subscription subs = Subscription.EMPTY;
             {
-                setOnMouseClicked(event -> {
-                    if (isEmpty() || getItem() == null) {
-                        table.getSelectionModel().clearSelection();
-                    }
-                });
-
-                setOnDragDetected(event -> {
-                    if (!isEmpty() && getIndex() != -1) {
-                        Dragboard db = startDragAndDrop(TransferMode.MOVE);
-                        db.setDragView(snapshot(null, null));
-                        ClipboardContent cc =  new ClipboardContent();
-                        cc.put(DRAG_DROP_MIME_FORMAT, getRowPos());
-                        db.setContent(cc);
-                        event.consume();
-                    }
-                });
-
-                setOnDragOver(event -> {
-                    Dragboard db = event.getDragboard();
-                    if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
-                        if (isEmpty()) {
-                            event.acceptTransferModes(TransferMode.MOVE);
-                            event.consume();
-                        }
-                        else {
-                            List<Integer> dragPos = (ArrayList<Integer>)db.getContent(DRAG_DROP_MIME_FORMAT);
-                            List<Integer> thisPos = getRowPos();
-                            if (!thisPos.equals(dragPos) && !(posHaveSameParent(thisPos, dragPos) && thisPos.getFirst() - 1 == dragPos.getFirst())) {
-
-                                event.acceptTransferModes(TransferMode.MOVE);
-                                event.consume();
-
-                                setStyle("-fx-border-color: -fx-accent; -fx-border-width: 2 0 0 0");
-                            }
-                        }
-                    }
-                });
-
-                setOnDragExited(event -> {
-                    setStyle("");
-                    event.consume();
-                });
-
-                setOnDragDropped(event -> {
-                    Dragboard db = event.getDragboard();
-                    if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
-                        table.getSelectionModel().clearSelection();
-
-                        List<Integer> oldPos =  (ArrayList<Integer>)db.getContent(DRAG_DROP_MIME_FORMAT);
-                        TreeItem<Task> draggedItem = removeTask(oldPos);
-
-                        List<Integer> newPos;
-                        if (isEmpty()) {
-                            newPos = List.of(table.getRoot().getChildren().size());
-                        }
-                        else {
-                            newPos = getRowPos();
-                        }
-
-                        insertTask(newPos, draggedItem.getValue());
-                        table.getSelectionModel().select(getItemFromPos(newPos));
-
-                        event.setDropCompleted(true);
-                        event.consume();
-                    }
-                });
-
-                MenuItem deleteItem = new MenuItem("Delete");
-                deleteItem.setOnAction(event -> {
-                    table.getSelectionModel().clearSelection();
-                    if (getTreeItem().getParent() == taskTreeTable.getRoot())
-                        twig.taskList().remove(getItem());
-                    else
-                        getTreeItem().getParent().getValue().getChildren().remove(getItem());
-                });
-
-                MenuItem addItem = new MenuItem("Add subtask");
-                addItem.setOnAction(event -> addSubtask(getTreeItem()));
-
-                contextMenu = new ContextMenu(deleteItem, addItem);
+                setOnMouseClicked(this::onMouseDoubleClick);
             }
 
             @Override
-            protected void updateItem(Task task, boolean empty) {
-                super.updateItem(task, empty);
-                sub.unsubscribe();
+            protected void updateItem(TaskInterface item, boolean empty) {
+                super.updateItem(item, empty);
+                subs.unsubscribe();
 
-                if (empty || task == null) {
-                    setContextMenu(null);
-                    setStyle("");
-                }
-                else {
-                    setContextMenu(contextMenu);
-                    TreeItem<Task> treeItem = getTreeItem();
-                    treeItem.expandedProperty().bindBidirectional(task.expandedProperty());
-                    applyPriorityColor(task.getPriority());
-                    sub = Subscription.combine(
-                            () -> treeItem.expandedProperty().unbindBidirectional(task.expandedProperty()),
-                            task.priorityProperty().subscribe(this::applyPriorityColor),
-                            selectedProperty().subscribe(selected -> applyPriorityColor(task.getPriority()))
-                    );
-                }
-            }
+                if (!empty && item != null) {
+                    if (item instanceof TwigTask task) {
+                        ListChangeMapper<TwigSubTask, TreeItem<TaskInterface>> changeMapper = new ListChangeMapper<>(
+                                getTreeItem().getChildren(), TreeItem::new
+                        );
+                        changeMapper.constructFromList(task.getSubTasks());
+                        task.getSubTasks().addListener(changeMapper);
 
-            private void applyPriorityColor(Number priority) {
-                String color = switch(priority.intValue()) {
-                    case 1 -> "-color-accent";
-                    case 2 -> "-color-success";
-                    case 3 -> "-color-warning";
-                    case 4 -> "-color-danger";
-                    default -> "-color-neutral";
-                };
-
-                setStyle("-fx-background-color: " + color + (isSelected() ? "-muted" : "-subtle"));
-            }
-
-            /**
-             * Generates a list of indices, starting from the current row's TreeItem up until before the root node.
-             * This is in reverse order, so the first index will be the index of this row's TreeItem within its parent,
-             * and the last index will be the highest level TreeItem's index within the overall task list
-             */
-            private ArrayList<Integer> getRowPos() {
-                ArrayList<Integer> posList = new ArrayList<>();
-                TreeItem<Task> treeItem = getTreeItem();
-
-                while (treeItem != table.getRoot()) {
-                    int index = treeItem.getParent().getChildren().indexOf(treeItem);
-                    posList.add(index);
-                    treeItem = treeItem.getParent();
-                }
-
-                return posList;
-            }
-
-            private TreeItem<Task> getItemFromPos(List<Integer> pos) {
-                TreeItem<Task> treeItem = table.getRoot();
-
-                for (int i = pos.size()-1; i >= 0; i--) {
-                    treeItem = treeItem.getChildren().get(pos.get(i));
-                }
-                return treeItem;
-            }
-
-            private boolean posHaveSameParent(List<Integer> pos1, List<Integer> pos2) {
-                if (pos1.size() == 1 && pos2.size() == 1)
-                    return true;
-
-                return pos1.subList(1, pos1.size()).equals(pos2.subList(1, pos2.size()));
-            }
-
-            private TreeItem<Task> removeTask(List<Integer> pos) {
-                System.out.println("Removing task from " + pos);
-                TreeItem<Task> treeItem;
-                if (pos.size() == 1) {
-                    treeItem = table.getRoot().getChildren().get(pos.getFirst());
-                    twig.taskList().remove(treeItem.getValue());
-                }
-                else {
-                    treeItem = getItemFromPos(pos);
-                    treeItem.getParent().getValue().getChildren().remove(treeItem.getValue());
-                }
-                return treeItem;
-            }
-
-            private void insertTask(List<Integer> pos, Task task) {
-                System.out.println("Inserting task at " + pos);
-                if (pos.size() == 1) {
-                    twig.taskList().add(pos.getFirst(), task);
-                }
-                else {
-                    TreeItem<Task> treeItem = table.getRoot();
-
-                    for (int i = pos.size()-1; i >= 1; i--) {
-                        treeItem = treeItem.getChildren().get(pos.get(i));
+                        subs = () -> task.getSubTasks().removeListener(changeMapper);
                     }
+                }
+            }
 
-                    treeItem.getValue().getChildren().add(pos.getFirst(), task);
+            private void onMouseDoubleClick(MouseEvent mouseEvent) {
+                if (mouseEvent.getButton() == MouseButton.PRIMARY && mouseEvent.getClickCount() == 2) {
+                    openTaskPanel(getItem());
+                    mouseEvent.consume();
                 }
             }
         });
-        taskTreeTable.getSelectionModel().selectedItemProperty().subscribe(item -> {
-            if (item == null) {
-                taskContent.setTask(null);
+        taskTreeTableView.setShowRoot(false);
+
+        taskListChangeMapper = new ListChangeMapper<>(
+                taskTreeTableView.getRoot().getChildren(),
+                TreeItem::new
+        );
+
+        TreeTableColumn<TaskInterface, String> nameCol = new TreeTableColumn<>("Name");
+        TreeTableColumn<TaskInterface, TaskCategory> categoryCol = new TreeTableColumn<>("Category");
+        TreeTableColumn<TaskInterface, Integer> pointsCol = new TreeTableColumn<>("Points");
+
+        nameCol.setCellValueFactory(cellData -> cellData.getValue().getValue().nameProperty());
+        categoryCol.setCellValueFactory(cellData -> {
+            TaskInterface task = cellData.getValue().getValue();
+            if (task instanceof TwigTask twigTask) {
+                return twigTask.categoryProperty();
             }
             else {
-                taskContent.setTask(item.getValue());
-//                taskContent.requestFocus();
+                return ((TwigSubTask) task).getParentTask().categoryProperty();
             }
         });
-
-        TreeTableColumn<Task, Task> taskNameCol = new TreeTableColumn<>("Name");
-        taskNameCol.setCellValueFactory(cell -> cell.getValue().valueProperty());
-        taskNameCol.setCellFactory(col -> new TreeTableCell<>() {
-
-            private final DoneCheckBox checkBox = new DoneCheckBox(done -> {
-                if (getItem() != null && !isEmpty()) {
-                    getItem().setDone(done);
-                }
-            });
+        categoryCol.setCellFactory(col -> new TreeTableCell<>() {
+            private Subscription subs = Subscription.EMPTY;
 
             @Override
-            protected void updateItem(Task item, boolean empty) {
+            protected void updateItem(TaskCategory item, boolean empty) {
                 super.updateItem(item, empty);
-
-                textProperty().unbind();
-                checkBox.selectedProperty().unbind();
+                subs.unsubscribe();
 
                 if (empty || item == null) {
                     setText(null);
@@ -820,294 +656,75 @@ public class TaskTwigController {
                 }
                 else {
                     textProperty().bind(item.nameProperty());
-                    checkBox.selectedProperty().bind(item.doneObservable());
-                    setGraphic(checkBox);
+                    setTextFill(item.getColor());
+
+                    subs = Subscription.combine(
+                            item.colorProperty().subscribe(this::setTextFill),
+                            textProperty()::unbind
+                    );
+
+                    setGraphic(null);
                 }
             }
         });
-
-        TreeTableColumn<Task, Integer> taskPriorityCol = new TreeTableColumn<>("Priority");
-        taskPriorityCol.setCellValueFactory(cell -> cell.getValue().getValue().priorityProperty().asObject());
-
-        TreeTableColumn<Task, TaskInterval> taskDateTimeCol = new TreeTableColumn<>("Due Date/Time");
-        taskDateTimeCol.setCellFactory(column -> new TreeTableCell<>() {
-            private Subscription sub = Subscription.EMPTY;
-
-            @Override
-            protected void updateItem(TaskInterval item, boolean empty) {
-                super.updateItem(item, empty);
-
-                sub.unsubscribe();
-                sub = Subscription.EMPTY;
-
-                if (empty || item == null)
-                    setText(null);
-
-                else {
-                    Task task = getTableRow().getItem();
-                    setDateTimeText(task);
-                    sub = task.dueTimeProperty().subscribe(dueTime -> setDateTimeText(task)).and(sub);
-                    sub = item.nextDueObservable().subscribe(nextDue -> setDateTimeText(task)).and(sub);
-                }
+        pointsCol.setCellValueFactory(cellData -> {
+            TaskInterface task = cellData.getValue().getValue();
+            if (task instanceof TwigTask twigTask) {
+                return twigTask.pointsProperty().asObject();
             }
-
-            private void setDateTimeText(Task task) {
-                if (task.getInterval().nextDue() == null) {
-                    setText(null);
-                }
-                else {
-                    String strVal = dateFormat.format(task.getInterval().nextDue());
-
-                    if (task.getDueTime() != null) {
-                        strVal += " " + timeFormat.format(task.getDueTime());
-                    }
-
-                    setText(strVal);
-                }
+            else {
+                return new SimpleObjectProperty<>(null);
             }
         });
-        taskDateTimeCol.setCellValueFactory(cell -> cell.getValue().getValue().intervalProperty());
 
-        TreeTableColumn<Task, TaskInterval> taskRepeatCol = new TreeTableColumn<>("Repeat");
-        taskRepeatCol.setCellFactory(column -> new TreeTableCell<>() {
-            private Subscription itemSubs = Subscription.EMPTY;
+        taskTreeTableView.getColumns().addAll(nameCol, categoryCol, pointsCol);
+        taskTreeTableView.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        VBox.setVgrow(taskTreeTableView, Priority.ALWAYS);
 
-            @Override
-            protected void updateItem(TaskInterval item, boolean empty) {
-                super.updateItem(item, empty);
-
-                itemSubs.unsubscribe();
-                itemSubs = Subscription.EMPTY;
-
-                if (empty || item == null)
-                    setText(null);
-
-                else {
-                    switch (item) {
-                        case TaskInterval.DayInterval day -> {
-                            setDayText(day);
-                            itemSubs = day.intervalProperty().subscribe(newValue -> setDayText(day)).and(itemSubs);
-                            itemSubs = day.repeatFromLastDoneProperty().subscribe(newValue -> setDayText(day)).and(itemSubs);
-                        }
-                        case TaskInterval.WeekInterval week -> {
-                            setWeekText(week);
-                            itemSubs = week.dayOfWeekMapProperty().subscribe(newValue -> setWeekText(week)).and(itemSubs);
-                        }
-                        case TaskInterval.MonthInterval month -> {
-                            setMonthText(month);
-                            ListChangeListener<Integer> listener = change -> setMonthText(month);
-                            month.getDatesObservable().addListener(listener);
-                            itemSubs = itemSubs.and(() -> month.getDatesObservable().removeListener(listener));
-                        }
-                        default -> setText(null);
-                    }
-                }
-            }
-
-            private void setDayText(TaskInterval.DayInterval day) {
-                if (day.isRepeatFromLastDone())
-                    setText("Every " + day.getInterval() + " days after done");
-                else
-                    setText("Every " + day.getInterval() + " days");
-            }
-
-            private void setWeekText(TaskInterval.WeekInterval week) {
-                StringBuilder retVal = new StringBuilder("weekly:");
-                for (DayOfWeek day : DayOfWeek.values()) {
-                    if (week.isDueOn(day)) {
-                        retVal.append(" ").append(dayOfWeekShorthand[day.ordinal()]);
-                    }
-                }
-                setText(retVal.toString());
-            }
-
-            private void setMonthText(TaskInterval.MonthInterval month) {
-                if (month.getDates().isEmpty()) {
-                    setText(null);
-                } else {
-                    StringBuilder dateStr = new StringBuilder("month: ");
-
-                    for (Integer date : month.getDates()) {
-                        dateStr.append(date);
-                        dateStr.append(", ");
-                    }
-
-                    setText(dateStr.substring(0, dateStr.length() - 2));
-                }
-            }
+        Button addButton = new Button("Add Task");
+        addButton.setOnAction(event -> {
+            TwigTask newTask = new TwigTask(
+                    "",
+                    twig.getTaskCategoryList().get(0),
+                    1,
+                    TwigTask.OccurrencePattern.DUE_BY,
+                    TwigTask.ExtendPattern.ON_COMPLETION,
+                    new TwigInterval.NoRepeat(),
+                    null
+            );
+            twig.twigTaskList().add(newTask);
+            openTaskPanel(newTask);
         });
-        taskRepeatCol.setCellValueFactory(cell -> cell.getValue().getValue().intervalProperty());
 
-        taskTreeTable.getColumns().addAll(taskNameCol, taskPriorityCol, taskDateTimeCol, taskRepeatCol);
-        taskTreeTable.setTreeColumn(taskNameCol);
-        taskGridPane.add(taskTreeTable, 0, 1);
-        GridPane.setHgrow(taskTreeTable, Priority.ALWAYS);
-        GridPane.setVgrow(taskTreeTable, Priority.ALWAYS);
-        
+        tab.setContent(new VBox(10, addButton, taskTreeTableView));
         return tab;
     }
 
-    private Tab createRoutineTab() {
-        Tab tab = new Tab("Routines");
-        tab.setGraphic(new FontIcon(FontAwesomeSolid.CALENDAR_CHECK));
+    private Tab createTaskCategoryTab() {
+        Tab tab = new Tab("Categories");
+        tab.setGraphic(new FontIcon(FontAwesomeSolid.SHAPES));
 
-        GridPane routineGridPane = new GridPane(0, 10);
-        routineGridPane.setPadding(new Insets(15));
-        tab.setContent(routineGridPane);
-
-        Button routineButton = new Button("New Routine");
-        routineButton.setOnAction(this::createRoutine);
-        routineGridPane.add(routineButton, 0, 0);
-
-        RoutinePropertyPane routineDetailView = new RoutinePropertyPane();
-        ScrollPane routineDetailScrollPane = new ScrollPane(routineDetailView);
-        routineDetailScrollPane.setHbarPolicy(ScrollBarPolicy.NEVER);
-        routineGridPane.add(routineDetailScrollPane, 1, 1);
-
-        routineTable = new TableView<>();
-        routineTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_NEXT_COLUMN);
-        routineTable.setRowFactory(table -> {
-            TableRow<Routine> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (row.isEmpty() || row.getItem() == null) {
-                    table.getSelectionModel().clearSelection();
-                }
-            });
-
-            row.setOnDragDetected(event -> {
-                if (!row.isEmpty() && row.getIndex() != -1) {
-                    Dragboard db = row.startDragAndDrop(TransferMode.MOVE);
-                    db.setDragView(row.snapshot(null, null));
-                    ClipboardContent cc =  new ClipboardContent();
-                    cc.put(DRAG_DROP_MIME_FORMAT, row.getIndex());
-                    db.setContent(cc);
-                    event.consume();
-                }
-            });
-
-            row.setOnDragOver(event -> {
-                Dragboard db = event.getDragboard();
-                if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
-                    int dragIndex = (int)db.getContent(DRAG_DROP_MIME_FORMAT);
-                    if (row.getIndex() != dragIndex && row.getIndex()-1 != dragIndex) {
-                        event.acceptTransferModes(TransferMode.MOVE);
-                        event.consume();
-
-                        if (!row.isEmpty() || row.getIndex() == table.getItems().size()) {
-                            row.setStyle("-fx-border-color: -fx-accent; -fx-border-width: 2 0 0 0");
+        taskCategoryListBox = new DraggableListBox<>(
+                category -> {
+                    TaskCategoryBox box = new TaskCategoryBox(category);
+                    box.setOnMouseClicked(event -> {
+                        if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                            openTaskCategoryPanel(category);
                         }
-                    }
-                }
-            });
+                    });
+                    return box;
+                },
+                TaskCategoryBox::unbind
+        );
 
-            row.setOnDragExited(event -> {
-                row.setStyle("");
-                event.consume();
-            });
-
-            row.setOnDragDropped(event -> {
-                Dragboard db = event.getDragboard();
-                if (db.hasContent(DRAG_DROP_MIME_FORMAT)) {
-                    int oldIndex =  (int)db.getContent(DRAG_DROP_MIME_FORMAT);
-                    Routine draggedItem = table.getItems().remove(oldIndex);
-
-                    int newIndex;
-                    if (row.isEmpty()) {
-                        newIndex = table.getItems().size();
-                    }
-                    else {
-                        newIndex = row.getIndex();
-                        if (newIndex >= oldIndex) {
-                            newIndex--;
-                        }
-                    }
-                    table.getItems().add(newIndex, draggedItem);
-
-                    event.setDropCompleted(true);
-                    event.consume();
-                }
-            });
-
-            MenuItem deleteItem = new MenuItem("Delete");
-            deleteItem.setOnAction(event -> table.getItems().remove(row.getIndex()));
-            row.setContextMenu(new ContextMenu(deleteItem));
-
-            return row;
-        });
-        routineTable.getSelectionModel().selectedItemProperty().subscribe(routineDetailView::setRoutine);
-
-        TableColumn<Routine, String> routineNameCol = new TableColumn<>("Name");
-        routineNameCol.setCellValueFactory(routine -> routine.getValue().name());
-
-        TableColumn<Routine, RoutineInterval> routineIntervalCol = new TableColumn<>("Interval");
-        routineIntervalCol.setCellValueFactory(routine -> routine.getValue().interval());
-        routineIntervalCol.setCellFactory(col -> new TableCell<>() {
-            private Subscription itemSubs = Subscription.EMPTY;
-
-            @Override
-            protected void updateItem(RoutineInterval item, boolean empty) {
-                super.updateItem(item, empty);
-
-                itemSubs.unsubscribe();
-                itemSubs = Subscription.EMPTY;
-
-                if (item == null || empty) {
-                    setText(null);
-                }
-                else {
-                    switch (item) {
-                        case RoutineInterval.DailyInterval daily -> setText("Daily");
-                        case RoutineInterval.DayInterval day -> {
-                            itemSubs = day.intervalProperty().subscribe(newValue -> setDayText(day)).and(itemSubs);
-                            itemSubs = day.repeatFromLastDoneProperty().subscribe(newValue -> setDayText(day)).and(itemSubs);
-                        }
-                        case RoutineInterval.WeekInterval week -> {
-                            setWeekText(week);
-                            itemSubs = week.dayOfWeekBitmapProperty().subscribe(newValue -> setWeekText(week)).and(itemSubs);
-                        }
-                        default -> setText(null);
-                    }
-                }
-            }
-
-            private void setWeekText(RoutineInterval.WeekInterval week) {
-                StringBuilder retVal = new StringBuilder("weekly:");
-                for (DayOfWeek day : DayOfWeek.values()) {
-                    if (week.isIntervalOn(day)) {
-                        retVal.append(" ").append(dayOfWeekShorthand[day.ordinal()]);
-                    }
-                }
-                setText(retVal.toString());
-            }
-
-            private void setDayText(RoutineInterval.DayInterval day) {
-                if (day.isRepeatFromLastDone())
-                    setText("Every " + day.getInterval() + " days after done");
-                else
-                    setText("Every " + day.getInterval() + " days");
-            }
+        Button addCategoryButton = new Button("Add Category");
+        addCategoryButton.setOnAction(event -> {
+            TaskCategory newCat = new TaskCategory("", Color.WHITE);
+            twig.getTaskCategoryList().add(newCat);
+            openTaskCategoryPanel(newCat);
         });
 
-        TableColumn<Routine, LocalTime> routineDueCol = new TableColumn<>("Due Time");
-        routineDueCol.setCellValueFactory(routine -> routine.getValue().dueTime());
-        routineDueCol.setCellFactory(column -> new timeTableCell<>(timeFormat) {});
-
-        routineTable.getColumns().addAll(routineNameCol, routineIntervalCol, routineDueCol);
-        routineGridPane.add(routineTable, 0, 1);
-        GridPane.setHgrow(routineTable, Priority.ALWAYS);
-        GridPane.setVgrow(routineTable, Priority.ALWAYS);
-
-        return tab;
-    }
-
-    public Tab createTwigTaskTab() {
-        Tab tab = new Tab("Twig Tasks");
-        tab.setGraphic(new FontIcon(FontAwesomeSolid.TASKS));
-
-        twigTaskCategoryList = new TaskCategoryList();
-
-        tab.setContent(new ScrollPane(twigTaskCategoryList));
-
+        tab.setContent(new VBox(10, addCategoryButton, taskCategoryListBox));
         return tab;
     }
 
@@ -1474,11 +1091,15 @@ public class TaskTwigController {
         todayWeightSpinner.getValueFactory().valueProperty().bindBidirectional(todaysJournal.weight());
         subscriptions = subscriptions.and(() -> todayWeightSpinner.getValueFactory().valueProperty().unbindBidirectional(todaysJournal.weight()));
 
-        todayRoutineListView.setItems(twig.routineList().filtered(item -> item.getInterval().isToday()));
-        subscriptions = subscriptions.and(() -> todayRoutineListView.setItems(null));
-
-        var filteredTasks = twig.taskList().filtered(Task::inProgress);
-        populateTaskTree(todayTaskTreeView.getRoot(), filteredTasks);
+        todayTaskCategoryList.setItems(twig.getTaskCategoryList());
+        todayTaskDoneBox.setCategory(
+                twig.twigTaskList(),
+                TwigTask::isDoneToday,
+                new SimpleStringProperty("Done"),
+                new SimpleObjectProperty<>(Color.valueOf("aaaaaaff"))
+        );
+        subscriptions = subscriptions.and(todayTaskCategoryList::unbind);
+        subscriptions = subscriptions.and(todayTaskDoneBox::unbind);
 
         subscriptions = twig.getDayStart().subscribe(this::updateTodaySleepPane).and(subscriptions);
         subscriptions = twig.getNightStart().subscribe(this::updateTodaySleepPane).and(subscriptions);
@@ -1497,14 +1118,18 @@ public class TaskTwigController {
         workoutTableView.setItems(twig.workoutRecords());
         subscriptions = subscriptions.and(() -> workoutTableView.setItems(null));
 
-        populateTaskTree(taskTreeTable.getRoot(), twig.taskList());
+        taskListChangeMapper.constructFromList(twig.twigTaskList());
+        twig.twigTaskList().addListener(taskListChangeMapper);
+        subscriptions = subscriptions.and(() -> twig.twigTaskList().removeListener(taskListChangeMapper));
+
+        taskCategoryListBox.setItems(twig.getTaskCategoryList());
+        subscriptions = subscriptions.and(() -> taskCategoryListBox.setItems(null));
+
+//        populateTaskTree(taskTreeTable.getRoot(), twig.taskList());
         populateTwigLists();
 
-        routineTable.setItems(twig.routineList());
-        subscriptions = subscriptions.and(() -> routineTable.setItems(null));
-
-        twigTaskCategoryList.setCategories(twig.getTaskCategoryList());
-        subscriptions = subscriptions.and(() -> twigTaskCategoryList.setCategories(null));
+//        routineTable.setItems(twig.routineList());
+//        subscriptions = subscriptions.and(() -> routineTable.setItems(null));
 
         MapChangeListener<LocalDate, Journal> journalChangeListener = change ->
                 journalListView.setItems(FXCollections.observableArrayList(twig.journalMap().keySet()).sorted(Comparator.reverseOrder()));
@@ -1518,9 +1143,7 @@ public class TaskTwigController {
         settingsNightStartInput.setTime(twig.getNightStart().getValue());
         settingsIntervalSpinner.getValueFactory().setValue(twig.syncIntervalProperty().getValue());
 
-//        subscriptions = settingsDayStartSpinner.getValueFactory().valueProperty().subscribe(twig::setDayStart).and(subscriptions);
         subscriptions = settingsDayStartInput.timeValueProperty().subscribe(twig::setDayStart).and(subscriptions);
-//        subscriptions = settingsNightStartSpinner.getValueFactory().valueProperty().subscribe(twig::setNightStart).and(subscriptions);
         subscriptions = settingsNightStartInput.timeValueProperty().subscribe(twig::setNightStart).and(subscriptions);
         subscriptions = settingsIntervalSpinner.getValueFactory().valueProperty().subscribe(twig.syncIntervalProperty()::setValue).and(subscriptions);
 
@@ -1833,25 +1456,75 @@ public class TaskTwigController {
         modalPane.show(new ExerciseModal(modalPane, twig.exerciseList()));
     }
 
-    protected void onNewTaskButtonClick(ActionEvent event) {
-        twig.taskList().add(new Task("", new TaskInterval.NoInterval(), 0));
-        taskTreeTable.getSelectionModel().clearSelection();
-        taskTreeTable.getSelectionModel().select(taskTreeTable.getRoot().getChildren().getLast());
-
-        taskContent.requestFocus();
+    private void openTaskPanel(TaskInterface taskInterface) {
+        switch (taskInterface) {
+            case TwigTask task -> {
+                new AlertModalBox(
+                        modalPane,
+                        "Edit Task", "",
+                        new TaskPropertyPane(twig, task),
+                        false, null, ModalButtonType.OK
+                ).show();
+            }
+            case TwigSubTask subTask -> {
+                new AlertModalBox(
+                        modalPane,
+                        "Edit Sub-Task", "",
+                        new SubTaskPropertyPane(subTask),
+                        false, null, ModalButtonType.OK
+                ).show();
+            }
+            case null, default -> {}
+        }
     }
 
-    private void addSubtask(TreeItem<Task> parent) {
-        Task newTask = new Task("", new TaskInterval.NoInterval(), 0);
-        parent.getValue().getChildren().add(newTask);
-        taskTreeTable.getSelectionModel().select(parent.getChildren().getLast());
-    }
+    private void openTaskCategoryPanel(TaskCategory category) {
+        final ModalButtonType deleteButton = new ModalButtonType(
+                "Delete",
+                ButtonBar.ButtonData.NO,
+                new FontIcon(FontAwesomeSolid.TRASH_ALT),
+                Styles.DANGER
+        );
 
-    protected void createRoutine(ActionEvent event) {
-        Routine newRoutine = new Routine("", null, new RoutineInterval.DailyInterval());
-        twig.routineList().add(newRoutine);
-        routineTable.getSelectionModel().clearSelection();
-        routineTable.getSelectionModel().select(newRoutine);
+        new AlertModalBox(
+                modalPane,
+                "Edit Task", "",
+                new TaskCategoryPropertyPane(category),
+                true,
+                buttonType -> {
+                    if (buttonType == deleteButton) {
+                        if (category.tasksProperty().isEmpty()) {
+                            twig.getTaskCategoryList().remove(category);
+                        }
+                        else {
+                            ObservableList<TaskCategory> catList = FXCollections.observableArrayList();
+                            twig.getTaskCategoryList().forEach(cat -> {
+                                if (cat != category)
+                                    catList.add(cat);
+                            });
+
+                            ChoiceBox<TaskCategory> categoryChoiceBox = new ChoiceBox<>(catList);
+                            categoryChoiceBox.setConverter(new TaskPropertyPane.CategoryChoiceBoxConverter());
+                            new AlertModalBox(
+                                    modalPane,
+                                    "Select where to move tasks",
+                                    "This category has task(s) assigned to it.\nBefore deleting the tasks must be moved" +
+                                            "to a different category.\nWhich category would you like to move them to?",
+                                    categoryChoiceBox, false,
+                                    deleteButtonType -> {
+                                        if (deleteButtonType == ModalButtonType.OK) {
+                                            TaskCategory newCategory = categoryChoiceBox.getValue();
+                                            category.getTasks().forEach(task -> task.setCategory(newCategory));
+                                            twig.getTaskCategoryList().remove(category);
+                                        }
+                                    },
+                                    ModalButtonType.OK, ModalButtonType.CANCEL
+                            ).show();
+                        }
+                    }
+                },
+                ModalButtonType.OK, deleteButton
+        ).show();
     }
 
     private void updateDbxAccountState() {

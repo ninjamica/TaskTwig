@@ -31,6 +31,7 @@ public class AlertModalBox extends ModalBox {
         for (ModalButtonType buttonType : buttons) {
             Button button = new Button(buttonType.text());
             buttonType.icon().ifPresent(button::setGraphic);
+            buttonType.cssStyle().ifPresent(button.getStyleClass()::add);
             ButtonBar.setButtonData(button, buttonType.buttonData());
 
             button.setOnAction(event -> onButtonAction(buttonType));

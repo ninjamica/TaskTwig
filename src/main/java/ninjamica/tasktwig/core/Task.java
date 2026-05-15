@@ -9,18 +9,17 @@ import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.paint.Paint;
 import org.jetbrains.annotations.Nullable;
 import tools.jackson.core.JsonParser;
 import tools.jackson.databind.JsonNode;
 
-import java.awt.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @JsonIncludeProperties({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
 @JsonPropertyOrder({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
@@ -131,20 +130,21 @@ public class Task {
             TaskCategory.clearCategoryMap();
             TaskTwig.requireJsonProperty(parser, "categories");
             parser.nextToken();
-            TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
+            parser.skipChildren();
+//            TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
 
-//            if(TaskCategory.getCategoryFromName("Other"))
-//            categoryList.add(new TaskCategory("Other", Paint.valueOf("ffffff")));
+//            if(TaskCategory.getCategoryFromName("Other") == null)
+//                categoryList.add(new TaskCategory("Other", Paint.valueOf("ffffff")));
         }
 
         TaskTwig.requireJsonProperty(parser, "tasks");
         parser.nextToken();
         TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, version));
-        for (Task task : taskList) {
-            if (task.getCategory() == null) {
-                task.setCategory(categoryList.getLast());
-            }
-        }
+//        for (Task task : taskList) {
+//            if (task.getCategory() == null) {
+//                task.setCategory(categoryList.getLast());
+//            }
+//        }
     }
 
     public StringProperty nameProperty() {

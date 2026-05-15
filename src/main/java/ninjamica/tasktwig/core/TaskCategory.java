@@ -2,13 +2,16 @@ package ninjamica.tasktwig.core;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
+import javafx.beans.Observable;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.IntegerExpression;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.paint.Paint;
+import javafx.scene.paint.Color;
 import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
@@ -23,7 +26,7 @@ public class TaskCategory {
 
     private static final Map<String, TaskCategory> categoryMap = new HashMap<>();
 
-    static TaskCategory getCategoryFromName(String name) {
+    public static TaskCategory getCategoryFromName(String name) {
         return categoryMap.get(name);
     }
 
@@ -32,27 +35,57 @@ public class TaskCategory {
     }
 
     private final StringProperty name = new SimpleStringProperty();
-    private final ObjectProperty<Paint> paint = new SimpleObjectProperty<>();
-    private final ObservableList<TwigTask> tasks = FXCollections.observableArrayList();
+    private final ObjectProperty<Color> color = new SimpleObjectProperty<>();
+    private final ObservableList<TwigTask> tasks = FXCollections.observableArrayList(
+            task -> new Observable[] {task.isTodayObservable(), task.isDoneObservable()}
+    );
+    private final IntegerExpression todayCount;
+    private final IntegerExpression doneTodayCount;
 
-    public TaskCategory(String name, Paint paint) {
+    public TaskCategory(String name, Color color) {
         this.name.set(name);
-        this.paint.set(paint);
+        this.color.set(color);
         categoryMap.put(name, this);
+
+        todayCount = Bindings.createIntegerBinding(
+//                () -> (int) (getTasks().stream().filter(TwigTask::isToday).count()),
+                () -> {
+                    int count = 0;
+                    for (TwigTask task : getTasks()) {
+                        if (task.isToday() || task.isDoneToday())
+                            count++;
+                    }
+                    return count;
+                },
+                tasks, TaskTwig.todayObservable()
+        );
+
+        doneTodayCount = Bindings.createIntegerBinding(
+//                () -> (int) (getTasks().stream().filter(TwigTask::isDoneToday).count()),
+                () -> {
+                    int count = 0;
+                    for (TwigTask task : getTasks()) {
+                        if (task.isDoneToday())
+                            count++;
+                    }
+                    return count;
+                },
+                tasks, TaskTwig.todayObservable()
+        );
     }
     public TaskCategory(JsonNode node, int version) {
         String name;
-        Paint paint;
+        Color color;
         switch (version) {
-            case 9:
+            case 9, 10:
                 name = node.get("name").asString();
-                paint = Paint.valueOf(node.get("paint").asString());
+                color = Color.valueOf(node.get("paint").asString());
                 break;
 
             default:
                 throw new TaskTwig.TwigJsonVersionException("Unsupported Task version for having categories: " + version);
         }
-        this(name, paint);
+        this(name, color);
     }
 
     public StringProperty nameProperty() {
@@ -68,21 +101,21 @@ public class TaskCategory {
         TaskTwig.setWithFXSafety(this.name::set, name);
     }
 
-    public ObjectProperty<Paint> paintProperty() {
-        return paint;
+    public ObjectProperty<Color> colorProperty() {
+        return color;
     }
 
-    public Paint getPaint() {
-        return TaskTwig.supplyWithFXSafety(paint::get);
+    public Color getColor() {
+        return TaskTwig.supplyWithFXSafety(color::get);
     }
 
-    public void setPaint(Paint paint) {
-        TaskTwig.setWithFXSafety(this.paint::set, paint);
+    public void setColor(Color color) {
+        TaskTwig.setWithFXSafety(this.color::set, color);
     }
 
     @JsonGetter("paint")
     public String getPaintJson() {
-        return getPaint().toString();
+        return getColor().toString();
     }
 
     public ObservableList<TwigTask> tasksProperty() {
@@ -93,9 +126,23 @@ public class TaskCategory {
         return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(tasks));
     }
 
+    public IntegerExpression todayCountProperty() {
+        return todayCount;
+    }
+    public int getTodayCount() {
+        return TaskTwig.supplyWithFXSafety(todayCount::get);
+    }
+
+    public IntegerExpression doneTodayCountProperty() {
+        return doneTodayCount;
+    }
+    public int getDoneTodayCount() {
+        return TaskTwig.supplyWithFXSafety(doneTodayCount::get);
+    }
+
     public void hashContents(MessageDigest digest) {
         digest.update(getName().getBytes(StandardCharsets.UTF_8));
-        digest.update(getPaint().toString().getBytes(StandardCharsets.UTF_8));
+        digest.update(getColor().toString().getBytes(StandardCharsets.UTF_8));
         getTasks().forEach(task -> task.hashContents(digest));
     }
 }
