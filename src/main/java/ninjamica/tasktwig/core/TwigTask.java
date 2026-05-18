@@ -7,7 +7,9 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.BooleanExpression;
+import javafx.beans.binding.ObjectBinding;
 import javafx.beans.property.*;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import org.jetbrains.annotations.NotNull;
@@ -57,6 +59,7 @@ public class TwigTask implements TaskInterface {
     private final BooleanBinding isDoneBinding;
     private final BooleanBinding isTodayBinding;
     private final BooleanBinding isOverdueBinding;
+    private final ObservableValue<LocalDate> nextDateBinding;
 
     public TwigTask(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
                     @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime,
@@ -90,6 +93,7 @@ public class TwigTask implements TaskInterface {
                 this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable(),
                 this.occurrencePattern
         );
+        this.nextDateBinding = this.interval.flatMap(TwigInterval::occurrenceObservable);
     }
 
     public TwigTask(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
@@ -100,15 +104,15 @@ public class TwigTask implements TaskInterface {
 
     public TwigTask(JsonNode node, int version) {
         String name;
-        TaskCategory category = null;
-        int points = 1;
+        TaskCategory category;
+        int points;
         OccurrencePattern occurrencePattern;
         ExtendPattern extendPattern;
         TwigInterval interval;
-        LocalTime dueTime = null;
+        LocalTime dueTime;
         List<TwigSubTask> subTasks = new ArrayList<>();
-        boolean expanded = false;
-        LocalDate lastDone = null;
+        boolean expanded;
+        LocalDate lastDone;
 
         switch (version) {
             case 10 -> {
@@ -371,6 +375,9 @@ public class TwigTask implements TaskInterface {
     public BooleanExpression isOverdueObservable() {
         return this.isOverdueBinding;
     }
+    public ObservableValue<LocalDate> nextDateObservable() {
+        return nextDateBinding;
+    }
 
     public StringProperty nameProperty() {
         return name;
@@ -434,6 +441,10 @@ public class TwigTask implements TaskInterface {
     @JsonGetter("interval")
     public TwigInterval getInterval() {
         return TaskTwig.supplyWithFXSafety(interval::get);
+    }
+
+    public LocalDate getNextDate() {
+        return nextDateBinding.getValue();
     }
 
     @JsonGetter("subTasks")

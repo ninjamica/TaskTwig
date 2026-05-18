@@ -116,9 +116,9 @@ public class TaskTwigController {
     
     // private static final String darkStylesheet = TaskTwigController.class.getResource("css/dark-theme.css").toExternalForm();
     private static final String chartStylesheet = TaskTwigController.class.getResource("css/areaChart.css").toExternalForm();
-    private static final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("EEE M/d/yyyy");
-    private static final DateTimeFormatter shortDateFormat = DateTimeFormatter.ofPattern("M/d");
-    private static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("h:mm a");
+    static final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("EEE M/d/yyyy");
+    static final DateTimeFormatter shortDateFormat = DateTimeFormatter.ofPattern("M/d");
+    static final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("h:mm a");
     private static final String[] dayOfWeekShorthand = {"M", "T", "W", "Th", "F", "Sa", "Su"};
     private static final LocalTime timeChartRefTime = LocalTime.of(12, 00);
     private static final DataFormat DRAG_DROP_MIME_FORMAT = new DataFormat("application/x-java-serialized-object");
@@ -154,8 +154,8 @@ public class TaskTwigController {
                 createTodayTab(),
                 createSleepTab(),
                 createExerciseTab(),
-                createTaskTab(),
                 createTaskCategoryTab(),
+                createTaskTab(),
                 createListTab(),
                 createJournalTab(),
                 createSettingsTab()

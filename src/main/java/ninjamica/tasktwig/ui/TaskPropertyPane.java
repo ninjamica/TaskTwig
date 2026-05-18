@@ -7,6 +7,7 @@ import atlantafx.base.theme.Tweaks;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.collections.FXCollections;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -21,6 +22,7 @@ import ninjamica.tasktwig.core.TwigTask;
 import ninjamica.tasktwig.ui.util.TimeInput;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
@@ -59,6 +61,7 @@ public class TaskPropertyPane extends VBox {
 
     private Card referenceDateCard;
     private DatePicker referenceDatePicker;
+    private Label nextDateLabel;
 
     private Card dueTimeCard;
     private TimeInput dueTimeInput;
@@ -192,7 +195,10 @@ public class TaskPropertyPane extends VBox {
         referenceDateCard.setHeader(new Label("Reference Date:"));
         referenceDateCard.setFocusTraversable(false);
         referenceDatePicker = new DatePicker();
-        referenceDateCard.setBody(referenceDatePicker);
+        nextDateLabel = new Label();
+        HBox referenceBox = new HBox(20, referenceDatePicker, nextDateLabel);
+        referenceBox.setAlignment(Pos.BASELINE_LEFT);
+        referenceDateCard.setBody(referenceBox);
 
         dueTimeCard = new Card();
         dueTimeCard.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
@@ -221,6 +227,7 @@ public class TaskPropertyPane extends VBox {
             extendChoiceBox.valueProperty().bindBidirectional(task.extendPatternProperty());
 
             referenceDatePicker.valueProperty().bindBidirectional(task.getInterval().referenceProperty());
+            updateNextDateText(task.getNextDate());
 
             dueTimeInput.timeValueProperty().bindBidirectional(task.dueTimeProperty());
 
@@ -232,6 +239,7 @@ public class TaskPropertyPane extends VBox {
                     () -> occurrenceChoiceBox.valueProperty().unbindBidirectional(task.occurrencePatternProperty()),
                     () -> extendChoiceBox.valueProperty().unbindBidirectional(task.extendPatternProperty()),
                     () -> referenceDatePicker.valueProperty().unbindBidirectional(task.getInterval().referenceProperty()),
+                    task.nextDateObservable().subscribe(this::updateNextDateText),
                     () -> dueTimeInput.timeValueProperty().unbindBidirectional(task.dueTimeProperty())
             );
 
@@ -424,6 +432,13 @@ public class TaskPropertyPane extends VBox {
         }
 
         return dates;
+    }
+
+    private void updateNextDateText(LocalDate nextDate) {
+        if (nextDate != null && !nextDate.equals(NoRepeat.NO_DATE))
+            nextDateLabel.setText("Next date: " + TaskTwigController.dateFormat.format(nextDate));
+        else
+            nextDateLabel.setText("");
     }
 
     public static class CategoryChoiceBoxConverter extends StringConverter<TaskCategory> {
