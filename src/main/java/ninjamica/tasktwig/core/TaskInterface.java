@@ -15,5 +15,5 @@ public interface TaskInterface {
     BooleanExpression isTodayObservable();
     BooleanExpression isDoneObservable();
     BooleanExpression isOverdueObservable();
-    ObservableList<TwigSubTask> getSubTasks();
+    ObservableList<SubTask> getSubTasks();
 }

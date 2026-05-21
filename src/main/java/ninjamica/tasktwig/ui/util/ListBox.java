@@ -8,37 +8,22 @@ import javafx.scene.layout.VBox;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public class ListBox<T, U extends Node> extends VBox {
+public class ListBox<E, N extends Node> extends VBox implements ListBoxInterface<E> {
 
-    private ListChangeMapper<T, Node> listChangeMapper;
-    private ObservableList<T> items;
+    private final ListChangeMapper<E, Node> listChangeMapper;
+    private ObservableList<E> items;
 
-    public ListBox(Function<T, U> constructor, Consumer<U> destructor) {
+    public ListBox(Function<E, N> constructor, Consumer<N> destructor) {
         super(10);
 
         listChangeMapper = new ListChangeMapper<>(
                 super.getChildren(),
-                (Function<T, Node>) constructor,
+                (Function<E, Node>) constructor,
                 (Consumer<Node>) destructor
         );
     }
 
-    protected ListBox() {}
-
-    protected void setupListBox(Function<T, U> constructor, Consumer<U> destructor) {
-        if (items == null) {
-            listChangeMapper = new ListChangeMapper<>(
-                    super.getChildren(),
-                    (Function<T, Node>) constructor,
-                    (Consumer<Node>) destructor
-            );
-        }
-        else {
-            throw new IllegalStateException("ListBox has already been initialized");
-        }
-    }
-
-    public void setItems(ObservableList<T> items) {
+    public void setItems(ObservableList<E> items) {
         unbind();
 
         if (items != null) {
@@ -48,7 +33,7 @@ public class ListBox<T, U extends Node> extends VBox {
         }
     }
 
-    public ObservableList<T> getItems() {
+    public ObservableList<E> getItems() {
         return items;
     }
 
@@ -62,6 +47,10 @@ public class ListBox<T, U extends Node> extends VBox {
 
         items = null;
         super.getChildren().clear();
+    }
+
+    public Node getNode() {
+        return this;
     }
 
     @Override

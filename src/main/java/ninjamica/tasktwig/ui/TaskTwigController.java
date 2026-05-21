@@ -18,7 +18,6 @@ import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.MapChangeListener;
 import javafx.collections.ObservableList;
-import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Worker;
 import javafx.event.ActionEvent;
 import javafx.event.Event;
@@ -44,11 +43,9 @@ import javafx.util.Duration;
 import javafx.util.StringConverter;
 import javafx.util.Subscription;
 import ninjamica.tasktwig.core.*;
-import ninjamica.tasktwig.core.TaskTwig.CommitDiff;
 import ninjamica.tasktwig.core.TaskTwig.FileAction;
 import ninjamica.tasktwig.core.TwigList.TwigListItem;
 import ninjamica.tasktwig.ui.util.*;
-import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeBrands;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -66,7 +63,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 @SuppressWarnings("OctalInteger")
 public class TaskTwigController {
@@ -75,8 +71,8 @@ public class TaskTwigController {
     private final VBox contentPane;
     private final ModalPane modalPane;
 
-    private TaskCategoryList todayTaskCategoryList;
-    private TaskCategoryView todayTaskDoneBox;
+    private ListBox<TaskCategory, TodayTaskCategoryView<TodayTaskBox>> todayTaskCategoryList;
+    private TaskCategoryViewBase todayTaskDoneBox;
     private Button todaySleepButton;
     private Button todayExerciseButton;
     private TextArea todayJournalTextArea;
@@ -92,10 +88,9 @@ public class TaskTwigController {
     private Label workoutStatusLabel;
     private TableView<Workout> workoutTableView;
 
-    private TreeTableView<TaskInterface> taskTreeTableView;
-    private ListChangeMapper<TwigTask, TreeItem<TaskInterface>> taskListChangeMapper;
-
     private DraggableListBox<TaskCategory, TaskCategoryBox> taskCategoryListBox;
+
+    private ListBox<TaskCategory, TaskCategoryView> taskListBox;
 
     private TreeView<Object> listTree;
 
@@ -136,7 +131,7 @@ public class TaskTwigController {
     private final TaskTwig twig;
     private final TaskTwigApplication application;
     private Subscription subscriptions = Subscription.EMPTY;
-    private final SaveSyncService backgroundService;
+    private final SaveSyncService saveSyncService;
     private final BrowserService browser = BrowserService.create().orElseThrow();
 
     private final XYChart.Series<String, Number> sleepLenChartData = new XYChart.Series<>();
@@ -147,7 +142,7 @@ public class TaskTwigController {
     public TaskTwigController(TaskTwigApplication application, TaskTwig taskTwig) {
         this.application = application;
         this.twig = taskTwig;
-        backgroundService = new SaveSyncService(this);
+        saveSyncService = new SaveSyncService(this, this::handleDataConflict, this::userConfirmSave);
         
         ToolBar toolBar = initToolBar();
         TabPane tabPane = new TabPane(
@@ -184,7 +179,91 @@ public class TaskTwigController {
     private ToolBar initToolBar() {
         syncButton = new Button();
         syncButton.getStyleClass().addAll(Styles.FLAT);
-        syncButton.setOnAction(this::onSyncButton);
+
+        syncButton.setOnAction(event -> saveSyncService.syncNow());
+
+        FontIcon syncIcon = new FontIcon(FontAwesomeSolid.SYNC);
+        FontIcon saveIcon = new FontIcon(FontAwesomeSolid.SAVE);
+        FontIcon uploadIcon = new FontIcon(FontAwesomeSolid.CLOUD_UPLOAD_ALT);
+        FontIcon downloadIcon = new FontIcon(FontAwesomeSolid.CLOUD_DOWNLOAD_ALT);
+        FontIcon mergeIcon = new FontIcon(FontAwesomeSolid.EXCHANGE_ALT);
+        FontIcon conflictIcon = new FontIcon(FontAwesomeSolid.UNLINK);
+        FontIcon doneIcon = new FontIcon(FontAwesomeSolid.CHECK);
+        FontIcon errorIcon = new FontIcon(FontAwesomeSolid.SKULL);
+
+        RotateTransition syncAnimation = new RotateTransition(Duration.seconds(1), syncIcon);
+        syncAnimation.setByAngle(360);
+        syncAnimation.setDelay(Duration.ZERO);
+        syncAnimation.setCycleCount(Animation.INDEFINITE);
+        syncAnimation.setInterpolator(Interpolator.LINEAR);
+
+        Timeline saveAnimation = Animations.shakeY(saveIcon, 5.0);
+        saveAnimation.setRate(0.2);
+        saveAnimation.setCycleCount(Animation.INDEFINITE);
+
+        Timeline uploadAnimation = Animations.shakeY(uploadIcon, 5.0);
+        uploadAnimation.setRate(0.2);
+        uploadAnimation.setCycleCount(Animation.INDEFINITE);
+
+        Timeline downloadAnimation = Animations.shakeY(downloadIcon, 5.0);
+        downloadAnimation.setRate(0.2);
+        downloadAnimation.setCycleCount(Animation.INDEFINITE);
+
+        saveSyncService.messageProperty().subscribe(message -> {
+            if (message != null && !message.isBlank()) {
+                syncButton.setText(message);
+            }
+        });
+        saveSyncService.valueProperty().subscribe((oldState, newState) -> {
+            switch (oldState) {
+                case SYNC -> syncAnimation.stop();
+                case SAVE -> saveAnimation.stop();
+                case UPLOAD -> uploadAnimation.stop();
+                case DOWNLOAD -> downloadAnimation.stop();
+                case null, default -> {}
+            }
+
+            switch (newState) {
+                case SYNC -> {
+                    syncButton.setGraphic(syncIcon);
+                    if (saveSyncService.isRunning())
+                        syncAnimation.playFromStart();
+                }
+                case SAVE -> {
+                    syncButton.setGraphic(saveIcon);
+                    if (saveSyncService.isRunning())
+                        saveAnimation.playFromStart();
+                }
+                case UPLOAD -> {
+                    syncButton.setGraphic(uploadIcon);
+                    if (saveSyncService.isRunning())
+                        uploadAnimation.playFromStart();
+                }
+                case DOWNLOAD -> {
+                    syncButton.setGraphic(downloadIcon);
+                    if (saveSyncService.isRunning())
+                        downloadAnimation.playFromStart();
+                }
+                case MERGE -> syncButton.setGraphic(mergeIcon);
+                case CONFLICT -> syncButton.setGraphic(conflictIcon);
+                case DONE -> syncButton.setGraphic(doneIcon);
+                case ERROR -> syncButton.setGraphic(errorIcon);
+                case null -> {}
+            }
+        });
+        saveSyncService.runningProperty().subscribe(isRunning -> {
+            syncButton.setDisable(!isRunning);
+            if (!isRunning) {
+                switch (saveSyncService.getValue()) {
+                    case SYNC -> syncAnimation.stop();
+                    case SAVE -> saveAnimation.stop();
+                    case UPLOAD -> uploadAnimation.stop();
+                    case DOWNLOAD -> downloadAnimation.stop();
+                    case null, default -> {}
+                }
+            }
+        });
+
         return new ToolBar(syncButton);
     }
 
@@ -293,7 +372,7 @@ public class TaskTwigController {
 //        todayTaskTreeView = new TreeView<>();
 //        todayTaskTreeView.setShowRoot(false);
 //        todayTaskTreeView.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
-//        todayTaskTreeView.setRoot(new TreeItem<>(new Task("rootTask", new TaskInterval.NoInterval(), 0)));
+//        todayTaskTreeView.setRoot(new TreeItem<>(new LegacyTask("rootTask", new TaskInterval.NoInterval(), 0)));
 //        todayTaskTreeView.setCellFactory(treeView -> new TreeCell<>() {
 //            private Subscription sub = Subscription.EMPTY;
 //
@@ -321,7 +400,7 @@ public class TaskTwigController {
 //            }
 //
 //            @Override
-//            protected void updateItem(Task item, boolean empty) {
+//            protected void updateItem(LegacyTask item, boolean empty) {
 //                super.updateItem(item, empty);
 //
 //                setText(null);
@@ -339,7 +418,7 @@ public class TaskTwigController {
 //                    name.textProperty().bind(item.nameProperty());
 //                    checkBox.selectedProperty().bind(item.doneObservable());
 //
-//                    TreeItem<Task> treeItem = getTreeItem();
+//                    TreeItem<LegacyTask> treeItem = getTreeItem();
 //                    treeItem.expandedProperty().bindBidirectional(item.expandedProperty());
 //
 //                    updateFormatting(item);
@@ -354,25 +433,25 @@ public class TaskTwigController {
 //                }
 //            }
 //
-//            private void updateFormatting(Task item) {
+//            private void updateFormatting(LegacyTask item) {
 //                if (item != null) {
 //                    if (item.isDone()) {
 ////                        name.setStyle("-fx-fill: #909090; -fx-strikethrough: true");
 //                        name.getStyleClass().add(Styles.TEXT_STRIKETHROUGH);
-//                        Styles.addStyleClass(name, Styles.TEXT_MUTED, Task.priorityStyleClassList());
+//                        Styles.addStyleClass(name, Styles.TEXT_MUTED, LegacyTask.priorityStyleClassList());
 //                        dueText.setText(null);
 //                    } else {
-////                        name.setStyle("-fx-fill: " + Task.getPriorityColor(item.getPriority()));
+////                        name.setStyle("-fx-fill: " + LegacyTask.getPriorityColor(item.getPriority()));
 //                        name.getStyleClass().remove(Styles.TEXT_STRIKETHROUGH);
-//                        Styles.addStyleClass(name, Task.priorityStyleClass(item.getPriority()), Task.priorityStyleClassList());
+//                        Styles.addStyleClass(name, LegacyTask.priorityStyleClass(item.getPriority()), LegacyTask.priorityStyleClassList());
 //
 //                        if (item.getInterval().isOverdue()) {
-//                            Styles.addStyleClass(dueText, Styles.DANGER, Task.priorityStyleClassList());
+//                            Styles.addStyleClass(dueText, Styles.DANGER, LegacyTask.priorityStyleClassList());
 //                            dueText.textProperty().unbind();
 //                            dueText.setText("Overdue!");
 //                        } else {
 ////                            dueText.setStyle("-fx-fill: #a1a1a1");
-//                            Styles.addStyleClass(dueText, Styles.TEXT_SUBTLE, Task.priorityStyleClassList());
+//                            Styles.addStyleClass(dueText, Styles.TEXT_SUBTLE, LegacyTask.priorityStyleClassList());
 //                            if (item.getInterval().nextDue() != null) {
 //                                if (item.getDueTime() != null)
 //                                    dueText.setText(shortDateFormat.format(item.getInterval().nextDue()) + " at " + timeFormat.format(item.getDueTime()));
@@ -387,8 +466,13 @@ public class TaskTwigController {
 //            }
 //        });
 
-        todayTaskCategoryList = new TaskCategoryList(TwigTask::isToday);
-        todayTaskDoneBox = new TaskCategoryView();
+        todayTaskCategoryList = new ListBox<>(
+                item -> new TodayTaskCategoryView<>(TodayTaskBox::new, TodayTaskBox::unbind, item, Task::isToday),
+                TaskCategoryViewBase::unbind
+        );
+        todayTaskDoneBox = new TaskCategoryViewBase(
+                () -> new ListBox<>(TodayTaskBox::new, TodayTaskBox::unbind)
+        );
 
         Card taskCard = new Card();
         taskCard.setHeader(taskLabelBox);
@@ -588,115 +672,139 @@ public class TaskTwigController {
         Tab tab = new Tab("Tasks");
         tab.setGraphic(new FontIcon(FontAwesomeSolid.TASKS));
 
-        taskTreeTableView = new TreeTableView<>(new TreeItem<>());
-        taskTreeTableView.setRowFactory(treeView -> new TreeTableRow<>() {
+//        taskTreeTableView = new TreeTableView<>(new TreeItem<>());
+//        taskTreeTableView.setRowFactory(treeView -> new TreeTableRow<>() {
+//
+//            private Subscription subs = Subscription.EMPTY;
+//            {
+//                setOnMouseClicked(this::onMouseDoubleClick);
+//            }
+//
+//            @Override
+//            protected void updateItem(TaskInterface item, boolean empty) {
+//                super.updateItem(item, empty);
+//                subs.unsubscribe();
+//
+//                if (!empty && item != null) {
+//                    if (item instanceof Task task) {
+//                        ListChangeMapper<SubTask, TreeItem<TaskInterface>> changeMapper = new ListChangeMapper<>(
+//                                getTreeItem().getChildren(), TreeItem::new
+//                        );
+//                        changeMapper.constructFromList(task.getSubTasks());
+//                        task.getSubTasks().addListener(changeMapper);
+//
+//                        subs = () -> task.getSubTasks().removeListener(changeMapper);
+//                    }
+//                }
+//            }
+//
+//            private void onMouseDoubleClick(MouseEvent mouseEvent) {
+//                if (mouseEvent.getButton() == MouseButton.PRIMARY && mouseEvent.getClickCount() == 2) {
+//                    openTaskPanel(getItem());
+//                    mouseEvent.consume();
+//                }
+//            }
+//        });
+//        taskTreeTableView.setShowRoot(false);
+//
+//        taskListChangeMapper = new ListChangeMapper<>(
+//                taskTreeTableView.getRoot().getChildren(),
+//                TreeItem::new
+//        );
+//
+//        TreeTableColumn<TaskInterface, String> nameCol = new TreeTableColumn<>("Name");
+//        TreeTableColumn<TaskInterface, TaskCategory> categoryCol = new TreeTableColumn<>("Category");
+//        TreeTableColumn<TaskInterface, Integer> pointsCol = new TreeTableColumn<>("Points");
+//
+//        nameCol.setCellValueFactory(cellData -> cellData.getValue().getValue().nameProperty());
+//        categoryCol.setCellValueFactory(cellData -> {
+//            TaskInterface task = cellData.getValue().getValue();
+//            if (task instanceof Task twigTask) {
+//                return twigTask.categoryProperty();
+//            }
+//            else {
+//                return ((SubTask) task).getParentTask().categoryProperty();
+//            }
+//        });
+//        categoryCol.setCellFactory(col -> new TreeTableCell<>() {
+//            private Subscription subs = Subscription.EMPTY;
+//
+//            @Override
+//            protected void updateItem(TaskCategory item, boolean empty) {
+//                super.updateItem(item, empty);
+//                subs.unsubscribe();
+//
+//                if (empty || item == null) {
+//                    setText(null);
+//                    setGraphic(null);
+//                }
+//                else {
+//                    textProperty().bind(item.nameProperty());
+//                    setTextFill(item.getColor());
+//
+//                    subs = Subscription.combine(
+//                            item.colorProperty().subscribe(this::setTextFill),
+//                            textProperty()::unbind
+//                    );
+//
+//                    setGraphic(null);
+//                }
+//            }
+//        });
+//        pointsCol.setCellValueFactory(cellData -> {
+//            TaskInterface task = cellData.getValue().getValue();
+//            if (task instanceof Task twigTask) {
+//                return twigTask.pointsProperty().asObject();
+//            }
+//            else {
+//                return new SimpleObjectProperty<>(null);
+//            }
+//        });
+//
+//        taskTreeTableView.getColumns().addAll(nameCol, categoryCol, pointsCol);
+//        taskTreeTableView.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+//        VBox.setVgrow(taskTreeTableView, Priority.ALWAYS);
 
-            private Subscription subs = Subscription.EMPTY;
-            {
-                setOnMouseClicked(this::onMouseDoubleClick);
-            }
-
-            @Override
-            protected void updateItem(TaskInterface item, boolean empty) {
-                super.updateItem(item, empty);
-                subs.unsubscribe();
-
-                if (!empty && item != null) {
-                    if (item instanceof TwigTask task) {
-                        ListChangeMapper<TwigSubTask, TreeItem<TaskInterface>> changeMapper = new ListChangeMapper<>(
-                                getTreeItem().getChildren(), TreeItem::new
-                        );
-                        changeMapper.constructFromList(task.getSubTasks());
-                        task.getSubTasks().addListener(changeMapper);
-
-                        subs = () -> task.getSubTasks().removeListener(changeMapper);
-                    }
-                }
-            }
-
-            private void onMouseDoubleClick(MouseEvent mouseEvent) {
-                if (mouseEvent.getButton() == MouseButton.PRIMARY && mouseEvent.getClickCount() == 2) {
-                    openTaskPanel(getItem());
-                    mouseEvent.consume();
-                }
-            }
-        });
-        taskTreeTableView.setShowRoot(false);
-
-        taskListChangeMapper = new ListChangeMapper<>(
-                taskTreeTableView.getRoot().getChildren(),
-                TreeItem::new
+        taskListBox = new ListBox<>(
+                category -> new TaskCategoryView(
+                        category,
+                        cat -> {
+                            Task newTask = new Task(
+                                    "",
+                                    cat,
+                                    1,
+                                    Task.OccurrencePattern.DUE_BY,
+                                    Task.ExtendPattern.ON_COMPLETION,
+                                    new TwigInterval.NoRepeat(),
+                                    null
+                            );
+                            twig.taskList().add(newTask);
+                            openTaskPanel(newTask);
+                        },
+                        task -> {
+                            SubTask newSubTask = new SubTask(
+                                    "",
+                                    null,
+                                    task
+                            );
+                            task.getSubTasks().add(newSubTask);
+                            openTaskPanel(newSubTask);
+                        },
+                        (event, task) -> {
+                            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                                openTaskPanel(task);
+                                event.consume();
+                            }
+                        }),
+                TaskCategoryViewBase::unbind
         );
 
-        TreeTableColumn<TaskInterface, String> nameCol = new TreeTableColumn<>("Name");
-        TreeTableColumn<TaskInterface, TaskCategory> categoryCol = new TreeTableColumn<>("Category");
-        TreeTableColumn<TaskInterface, Integer> pointsCol = new TreeTableColumn<>("Points");
-
-        nameCol.setCellValueFactory(cellData -> cellData.getValue().getValue().nameProperty());
-        categoryCol.setCellValueFactory(cellData -> {
-            TaskInterface task = cellData.getValue().getValue();
-            if (task instanceof TwigTask twigTask) {
-                return twigTask.categoryProperty();
-            }
-            else {
-                return ((TwigSubTask) task).getParentTask().categoryProperty();
-            }
-        });
-        categoryCol.setCellFactory(col -> new TreeTableCell<>() {
-            private Subscription subs = Subscription.EMPTY;
-
-            @Override
-            protected void updateItem(TaskCategory item, boolean empty) {
-                super.updateItem(item, empty);
-                subs.unsubscribe();
-
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                }
-                else {
-                    textProperty().bind(item.nameProperty());
-                    setTextFill(item.getColor());
-
-                    subs = Subscription.combine(
-                            item.colorProperty().subscribe(this::setTextFill),
-                            textProperty()::unbind
-                    );
-
-                    setGraphic(null);
-                }
-            }
-        });
-        pointsCol.setCellValueFactory(cellData -> {
-            TaskInterface task = cellData.getValue().getValue();
-            if (task instanceof TwigTask twigTask) {
-                return twigTask.pointsProperty().asObject();
-            }
-            else {
-                return new SimpleObjectProperty<>(null);
-            }
-        });
-
-        taskTreeTableView.getColumns().addAll(nameCol, categoryCol, pointsCol);
-        taskTreeTableView.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        VBox.setVgrow(taskTreeTableView, Priority.ALWAYS);
-
-        Button addButton = new Button("Add Task");
+        Button addButton = new Button("Add LegacyTask");
         addButton.setOnAction(event -> {
-            TwigTask newTask = new TwigTask(
-                    "",
-                    twig.getTaskCategoryList().get(0),
-                    1,
-                    TwigTask.OccurrencePattern.DUE_BY,
-                    TwigTask.ExtendPattern.ON_COMPLETION,
-                    new TwigInterval.NoRepeat(),
-                    null
-            );
-            twig.twigTaskList().add(newTask);
-            openTaskPanel(newTask);
+
         });
 
-        tab.setContent(new VBox(10, addButton, taskTreeTableView));
+        tab.setContent(new ScrollPane(new VBox(10, addButton, taskListBox)));
         return tab;
     }
 
@@ -714,7 +822,16 @@ public class TaskTwigController {
                     });
                     return box;
                 },
-                TaskCategoryBox::unbind
+                TaskCategoryBox::unbind,
+                Pos.CENTER_LEFT
+        );
+        taskCategoryListBox.setNodeStyle(
+                "-fx-background-color: -color-bg-default;" +
+                "-fx-background-radius: 5;" +
+                "-fx-border-color: -color-border-default;" +
+                "-fx-border-width: 1;" +
+                "-fx-border-radius: 5;" +
+                "-fx-padding: 10"
         );
 
         Button addCategoryButton = new Button("Add Category");
@@ -980,7 +1097,7 @@ public class TaskTwigController {
         );
         settingsIntervalSpinner = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 30*60));
         settingsIntervalSpinner.getValueFactory().valueProperty().subscribe(interval ->
-            backgroundService.setPeriod(Duration.seconds(interval)));
+                saveSyncService.setPeriod(Duration.seconds(interval)));
         settingsIntervalSpinner.setPrefWidth(110);
         autoSyncIntervalTile.setAction(settingsIntervalSpinner);
         autoSyncIntervalTile.setActionHandler(settingsIntervalSpinner::requestFocus);
@@ -1083,7 +1200,7 @@ public class TaskTwigController {
         return tab;
     }
 
-    private void attachTwigData() {
+    public void attachTwigData() {
         Journal todaysJournal = twig.todaysJournal();
         todayJournalTextArea.textProperty().bindBidirectional(todaysJournal.textProperty());
         subscriptions = subscriptions.and(() -> todayJournalTextArea.textProperty().unbindBidirectional(todaysJournal.textProperty()));
@@ -1093,8 +1210,8 @@ public class TaskTwigController {
 
         todayTaskCategoryList.setItems(twig.getTaskCategoryList());
         todayTaskDoneBox.setCategory(
-                twig.twigTaskList(),
-                TwigTask::isDoneToday,
+                twig.taskList(),
+                Task::isDoneToday,
                 new SimpleStringProperty("Done"),
                 new SimpleObjectProperty<>(Color.valueOf("aaaaaaff"))
         );
@@ -1118,9 +1235,11 @@ public class TaskTwigController {
         workoutTableView.setItems(twig.workoutRecords());
         subscriptions = subscriptions.and(() -> workoutTableView.setItems(null));
 
-        taskListChangeMapper.constructFromList(twig.twigTaskList());
-        twig.twigTaskList().addListener(taskListChangeMapper);
-        subscriptions = subscriptions.and(() -> twig.twigTaskList().removeListener(taskListChangeMapper));
+//        taskListChangeMapper.constructFromList(twig.taskList());
+//        twig.taskList().addListener(taskListChangeMapper);
+//        subscriptions = subscriptions.and(() -> twig.taskList().removeListener(taskListChangeMapper));
+        taskListBox.setItems(twig.getTaskCategoryList());
+        subscriptions = subscriptions.and(() -> taskListBox.setItems(null));
 
         taskCategoryListBox.setItems(twig.getTaskCategoryList());
         subscriptions = subscriptions.and(() -> taskCategoryListBox.setItems(null));
@@ -1147,15 +1266,15 @@ public class TaskTwigController {
         subscriptions = settingsNightStartInput.timeValueProperty().subscribe(twig::setNightStart).and(subscriptions);
         subscriptions = settingsIntervalSpinner.getValueFactory().valueProperty().subscribe(twig.syncIntervalProperty()::setValue).and(subscriptions);
 
-        backgroundService.restart();
+        saveSyncService.restart();
     }
 
-    private void detachTwigData() {
+    public void detachTwigData() {
         subscriptions.unsubscribe();
         subscriptions = Subscription.EMPTY;
 
-        if (backgroundService.getState() != Worker.State.RUNNING)
-            backgroundService.cancel();
+        if (saveSyncService.getState() != Worker.State.RUNNING)
+            saveSyncService.cancel();
     }
 
     public Pane getRoot() {
@@ -1164,17 +1283,16 @@ public class TaskTwigController {
 
     public void closeTwig(WindowEvent event) {
         event.consume();
-//        runSyncAndExit();
-        backgroundService.syncAndExit();
+        saveSyncService.syncAndExit();
     }
 
-    private void populateTaskTree(TreeItem<Task> root, ObservableList<Task> topLevelTasks) {
+    private void populateTaskTree(TreeItem<LegacyTask> root, ObservableList<LegacyTask> topLevelTasks) {
         root.getChildren().clear();
-        for (Task task : topLevelTasks) {
+        for (LegacyTask task : topLevelTasks) {
             root.getChildren().add(constructTaskTree(task));
         }
 
-        ListChangeListener<Task> listener = change -> handleTaskItemChange(change, root);
+        ListChangeListener<LegacyTask> listener = change -> handleTaskItemChange(change, root);
         topLevelTasks.addListener(listener);
 
         subscriptions = Subscription.combine(
@@ -1183,15 +1301,15 @@ public class TaskTwigController {
         ).and(subscriptions);
     }
 
-    private TreeItem<Task> constructTaskTree(Task task) {
-        TreeItem<Task> treeItem = new TreeItem<>(task);
+    private TreeItem<LegacyTask> constructTaskTree(LegacyTask task) {
+        TreeItem<LegacyTask> treeItem = new TreeItem<>(task);
         treeItem.setExpanded(true);
 
-        for (Task subTask : task.getChildren()) {
+        for (LegacyTask subTask : task.getChildren()) {
             treeItem.getChildren().add(constructTaskTree(subTask));
         }
 
-        ListChangeListener<Task> listener = change -> handleTaskItemChange(change, treeItem);
+        ListChangeListener<LegacyTask> listener = change -> handleTaskItemChange(change, treeItem);
         task.getChildren().addListener(listener);
 
         subscriptions = subscriptions.and(() -> task.getChildren().removeListener(listener));
@@ -1199,12 +1317,12 @@ public class TaskTwigController {
         return treeItem;
     }
 
-    private void handleTaskItemChange(ListChangeListener.Change<? extends Task> change, TreeItem<Task> parent) {
-        ObservableList<TreeItem<Task>> treeChildren = parent.getChildren();
+    private void handleTaskItemChange(ListChangeListener.Change<? extends LegacyTask> change, TreeItem<LegacyTask> parent) {
+        ObservableList<TreeItem<LegacyTask>> treeChildren = parent.getChildren();
         while (change.next()) {
             if (change.wasPermutated()) {
                 for (int i = change.getFrom(); i < change.getTo(); ++i) {
-                    TreeItem<Task> cell = treeChildren.remove(i);
+                    TreeItem<LegacyTask> cell = treeChildren.remove(i);
                     treeChildren.add(change.getPermutation(i), cell);
                 }
             }
@@ -1457,21 +1575,41 @@ public class TaskTwigController {
     }
 
     private void openTaskPanel(TaskInterface taskInterface) {
+        final ModalButtonType deleteButton = new ModalButtonType(
+                "Delete",
+                ButtonBar.ButtonData.NO,
+                new FontIcon(FontAwesomeSolid.TRASH_ALT),
+                Styles.DANGER
+        );
+
         switch (taskInterface) {
-            case TwigTask task -> {
+            case Task task -> {
                 new AlertModalBox(
                         modalPane,
-                        "Edit Task", "",
+                        "Edit LegacyTask", "",
                         new TaskPropertyPane(twig, task),
-                        false, null, ModalButtonType.OK
+                        false,
+                        buttonType -> {
+                            if (buttonType == deleteButton) {
+                                task.setCategory(null);
+                                twig.taskList().remove(task);
+                            }
+                        },
+                        ModalButtonType.OK, deleteButton
                 ).show();
             }
-            case TwigSubTask subTask -> {
+            case SubTask subTask -> {
                 new AlertModalBox(
                         modalPane,
-                        "Edit Sub-Task", "",
+                        "Edit Sub-LegacyTask", "",
                         new SubTaskPropertyPane(subTask),
-                        false, null, ModalButtonType.OK
+                        false,
+                        buttonType -> {
+                            if (buttonType == deleteButton) {
+                                subTask.getParentTask().getSubTasks().remove(subTask);
+                            }
+                        },
+                        ModalButtonType.OK, deleteButton
                 ).show();
             }
             case null, default -> {}
@@ -1488,7 +1626,7 @@ public class TaskTwigController {
 
         new AlertModalBox(
                 modalPane,
-                "Edit Task", "",
+                "Edit LegacyTask", "",
                 new TaskCategoryPropertyPane(category),
                 true,
                 buttonType -> {
@@ -1688,10 +1826,6 @@ public class TaskTwigController {
         return result.isPresent() && result.get() == ModalButtonType.YES;
     }
 
-    private void onSyncButton(ActionEvent event) {
-        backgroundService.syncNow();
-    }
-
     static void enableStyle(Node node, String style) {
         ObservableList<String> styleClass = node.getStyleClass();
         if (!styleClass.contains(style)) {
@@ -1789,247 +1923,6 @@ public class TaskTwigController {
                 setValue(value + i);
             else
                 setValue(0f);
-        }
-    }
-
-    private static class SaveSyncService extends ScheduledService<Void> {
-
-        private final TaskTwigController controller;
-        private final TaskTwig twig;
-        private volatile boolean syncOverrideFlag = false;
-        private volatile boolean exitPromptFlag = false;
-        private volatile boolean exitPromptAsked = false;
-
-        private IconState iconState = IconState.SYNC;
-        private enum IconState {
-            SYNC(FontAwesomeSolid.SYNC),
-            SAVE(FontAwesomeSolid.SAVE),
-            UPLOAD(FontAwesomeSolid.CLOUD_UPLOAD_ALT),
-            DOWNLOAD(FontAwesomeSolid.CLOUD_DOWNLOAD_ALT),
-            DONE(FontAwesomeSolid.CHECK),
-            CONFLICT(FontAwesomeSolid.UNLINK),
-            MERGE(FontAwesomeSolid.EXCHANGE_ALT);
-
-            public final FontIcon icon;
-            private Animation animation;
-
-            public void startAnimation() {
-                animation.playFromStart();
-            }
-
-            public void stopAnimation() {
-                animation.stop();
-            }
-
-            IconState(Ikon icon) {
-                this.icon = new FontIcon(icon);
-            }
-
-            static {
-                for (IconState iconState : IconState.values()) {
-                    switch (iconState) {
-                        case SYNC -> {
-                            RotateTransition syncIconAnimation = new RotateTransition(Duration.seconds(1), iconState.icon);
-                            syncIconAnimation.setByAngle(360);
-                            syncIconAnimation.setDelay(Duration.ZERO);
-                            syncIconAnimation.setCycleCount(Animation.INDEFINITE);
-                            syncIconAnimation.setInterpolator(Interpolator.LINEAR);
-                            iconState.animation = syncIconAnimation;
-                        }
-                        case SAVE, UPLOAD, DOWNLOAD -> {
-                            Timeline bobAnimation = Animations.shakeY(iconState.icon, 5.0);
-                            bobAnimation.setRate(0.2);
-                            bobAnimation.setCycleCount(Animation.INDEFINITE);
-                            iconState.animation = bobAnimation;
-                        }
-                        default -> iconState.animation = Animations.pulse(iconState.icon, 1.0);
-                    }
-                }
-            }
-        }
-
-        private SaveSyncService(TaskTwigController controller) {
-            super();
-            this.controller = controller;
-            this.twig = controller.twig;
-        }
-
-        public void forceSync() {
-            syncOverrideFlag = true;
-        }
-
-        public void syncNow() {
-            setDelay(Duration.ZERO);
-            forceSync();
-            restart();
-        }
-
-        public void syncAndExit() {
-            setOnSucceeded(event -> Platform.exit());
-            setOnFailed(event -> Platform.exit());
-            exitPromptFlag = true;
-            restart();
-        }
-
-        @Override
-        protected javafx.concurrent.Task<Void> createTask() {
-            final boolean exitPrompt = exitPromptFlag;
-            final boolean forceSync = syncOverrideFlag;
-            syncOverrideFlag = false;
-
-            return new javafx.concurrent.Task<>() {
-                @Override
-                protected Void call() {
-                    setStartUI();
-
-                    boolean syncToDbx = forceSync || CompletableFuture.supplyAsync(twig.autoSyncProperty()::get, Platform::runLater).join();
-
-                    updateMessage("Saving and hashing data");
-                    twig.saveToFileFX();
-
-                    if (twig.dbxClient().getValue() != null) {
-                        updateMessage("Comparing data with Dropbox");
-                        setIconUI(IconState.SYNC, true);
-
-                        CommitDiff commitDiff;
-                        if (syncToDbx) {
-                            commitDiff = twig.compareCommitToDbx(controller::handleDataConflict);
-                        }
-                        else if (exitPrompt) {
-                            commitDiff = twig.compareCommitToDbx((overallAction, fileActions) -> {
-                                exitPromptAsked = true;
-                                if (controller.userConfirmSave())
-                                    return controller.handleDataConflict(overallAction, fileActions);
-                                else
-                                    return null;
-                            });
-
-                            if (commitDiff.action() != null && commitDiff.action() != FileAction.NONE) {
-                                syncToDbx = exitPromptAsked || controller.userConfirmSave();
-                            }
-                        }
-                        else {
-                            commitDiff = twig.compareCommitToDbx(null);
-                        }
-
-                        if (syncToDbx) {
-                            String labelText;
-                            switch (commitDiff.action()) {
-                                case UPLOAD -> {
-                                    labelText = "Uploading data to Dropbox";
-                                    setIconUI(IconState.UPLOAD, true);
-                                }
-                                case DOWNLOAD -> {
-                                    labelText = "Downloading data from Dropbox";
-                                    setIconUI(IconState.DOWNLOAD, true);
-                                    CompletableFuture.runAsync(controller::detachTwigData, Platform::runLater).join();
-                                }
-                                case MERGE -> {
-                                    labelText = "Merging data from Dropbox with local";
-                                    setIconUI(IconState.MERGE, true);
-                                    CompletableFuture.runAsync(controller::detachTwigData, Platform::runLater).join();
-                                }
-                                case NONE -> {
-                                    labelText = "In sync as of " + LocalTime.now().format(timeFormat);
-                                    setIconUI(IconState.DONE, false);
-                                }
-                                default -> labelText = "";
-                            }
-                            updateMessage(labelText);
-                            twig.dbxSync(commitDiff);
-
-                            setIconUI(IconState.DONE, false);
-                            String finishSyncText = switch (commitDiff.action()) {
-                                case UPLOAD ->
-                                        "Synced to remote at " + LocalTime.now().format(timeFormat);
-                                case DOWNLOAD -> {
-                                    Platform.runLater(controller::attachTwigData);
-                                    yield "Synced from remote at " + LocalTime.now().format(timeFormat);
-                                }
-                                case MERGE -> {
-                                    Platform.runLater(controller::attachTwigData);
-                                    yield "Synced with remote at " + LocalTime.now().format(timeFormat);
-                                }
-                                case NONE -> labelText;
-                                default -> "";
-                            };
-                            updateMessage(finishSyncText);
-                        }
-                        else {
-                            assert commitDiff.action() != null;
-                            String syncCompareText = switch(commitDiff.action()) {
-                                case NONE -> {
-                                    setIconUI(IconState.DONE, false);
-                                    yield "In sync as of " + LocalTime.now().format(timeFormat);
-                                }
-                                case UPLOAD -> {
-                                    setIconUI(IconState.UPLOAD, false);
-                                    yield "Ahead of remote";
-                                }
-                                case DOWNLOAD -> {
-                                    setIconUI(IconState.DOWNLOAD, false);
-                                    yield "Behind remote";
-                                }
-                                case MERGE, CONFLICT -> {
-                                    setIconUI(IconState.CONFLICT, false);
-                                    yield "local/remote conflict (press sync to resolve)";
-                                }
-                            };
-
-                            updateMessage(syncCompareText);
-                        }
-                    }
-                    else {
-                        updateMessage("Data saved to file");
-                        setIconUI(IconState.DONE, false);
-                    }
-
-                    setDoneUI();
-                    return null;
-                }
-
-                @Override
-                protected void failed() {
-                    System.out.println("Failed task");
-                    System.out.println(getException().getMessage());
-                    setDoneUI();
-                    Platform.runLater(() -> controller.syncButton.setText("Sync failed"));
-                }
-
-                @Override
-                protected void cancelled() {
-                    System.out.println("Cancelled task");
-                    setDoneUI();
-                    Platform.runLater(() -> controller.syncButton.setText("Sync cancelled"));
-                }
-
-                private void setStartUI() {
-                    Platform.runLater(() -> {
-                        controller.syncButton.textProperty().bind(this.messageProperty());
-                        controller.syncButton.setDisable(true);
-                        setIconUI(IconState.SAVE, true);
-                    });
-                }
-
-                private void setIconUI(IconState icon, boolean playAnimation) {
-                    Platform.runLater(() -> {
-                        iconState.stopAnimation();
-                        iconState = icon;
-                        controller.syncButton.setGraphic(icon.icon);
-                        if (playAnimation) {
-                            icon.startAnimation();
-                        }
-                    });
-                }
-
-                private void setDoneUI() {
-                    Platform.runLater(() -> {
-                        controller.syncButton.textProperty().unbind();
-                        iconState.stopAnimation();
-                        controller.syncButton.setDisable(false);
-                    });
-                }
-            };
         }
     }
 }

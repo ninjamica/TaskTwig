@@ -7,7 +7,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 import javafx.util.Subscription;
-import ninjamica.tasktwig.core.TwigSubTask;
+import ninjamica.tasktwig.core.SubTask;
 import ninjamica.tasktwig.ui.util.TimeInput;
 
 public class SubTaskPropertyPane extends VBox {
@@ -20,7 +20,7 @@ public class SubTaskPropertyPane extends VBox {
         initializeUI();
     }
 
-    public SubTaskPropertyPane(TwigSubTask subTask) {
+    public SubTaskPropertyPane(SubTask subTask) {
         this();
         setSubTask(subTask);
     }
@@ -32,7 +32,7 @@ public class SubTaskPropertyPane extends VBox {
         nameCard.setHeader(new Label("Name:"));
         nameCard.setFocusTraversable(false);
         nameTextField = new TextField();
-        nameTextField.setPromptText("Task Name");
+        nameTextField.setPromptText("LegacyTask Name");
         nameTextField.setPrefWidth(230);
         nameCard.setBody(nameTextField);
 
@@ -47,7 +47,7 @@ public class SubTaskPropertyPane extends VBox {
         getChildren().addAll(nameCard, dueTimeCard);
     }
 
-    public void setSubTask(TwigSubTask subTask) {
+    public void setSubTask(SubTask subTask) {
         subscriptions.unsubscribe();
         subscriptions = Subscription.EMPTY;
 

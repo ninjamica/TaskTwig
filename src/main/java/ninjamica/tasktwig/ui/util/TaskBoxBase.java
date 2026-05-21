@@ -1,79 +1,100 @@
 package ninjamica.tasktwig.ui.util;
 
-import atlantafx.base.theme.Styles;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.scene.Node;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.scene.text.Text;
 import javafx.util.Subscription;
-import ninjamica.tasktwig.core.TaskInterface;
+import ninjamica.tasktwig.core.SubTask;
+import ninjamica.tasktwig.core.Task;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
+import org.kordamp.ikonli.javafx.FontIcon;
 
-public abstract class TaskBoxBase<T extends TaskInterface> extends VBox {
+import java.util.function.Supplier;
 
-    protected final Text nameText = new Text();
-    protected final DoneCheckBox doneCheckBox = new DoneCheckBox();
-    protected final HBox taskSection = new HBox(5, doneCheckBox, nameText);
+public class TaskBoxBase extends TaskInterfaceBoxBase<Task> {
 
-    protected Subscription subscriptions = Subscription.EMPTY;
+    private final FontIcon expandIcon = new FontIcon();
+    protected final ListBoxInterface<SubTask> subTaskBox;
 
-    protected TaskBoxBase() {
-        nameText.getStyleClass().add(Styles.TEXT);
-        nameText.strikethroughProperty().bind(doneCheckBox.selectedProperty());
-        doneCheckBox.selectedProperty().subscribe(done -> setOpacity(done ? 0.5 : 1.0));
+    protected final BooleanProperty expanded = new SimpleBooleanProperty();
+    private Subscription subs = Subscription.EMPTY;
 
-        taskSection.setOnMouseClicked(event -> doneCheckBox.fire());
-        taskSection.setOnMouseEntered(event -> nameText.setUnderline(true));
-        taskSection.setOnMouseExited(event -> nameText.setUnderline(false));
+//    public TaskBoxBase(Function<SubTask, T> subTaskConstructor, Consumer<T> subTaskDestructor) {
+    public TaskBoxBase(Supplier<ListBoxInterface<SubTask>> subTaskBoxConstructor) {
+        setSpacing(5);
 
-        super.getChildren().add(taskSection);
+        HBox expandIconPane = new HBox(expandIcon);
+        expandIconPane.setPrefSize(15, 20);
+        expandIconPane.setMinSize(USE_PREF_SIZE, USE_PREF_SIZE);
+        expandIconPane.setMaxSize(USE_PREF_SIZE, USE_PREF_SIZE);
+
+        expandIconPane.setOnMouseClicked(event -> {
+            if (expandIcon.isVisible())
+                expanded.set(!expanded.get());
+        });
+        expandIcon.setCursor(Cursor.HAND);
+        expandIconPane.setOnMouseEntered(event -> expandIcon.setStyle("-fx-icon-color: -color-fg-default;"));
+        expandIconPane.setOnMouseExited(event -> expandIcon.setStyle("-fx-icon-color: -color-fg-muted;"));
+        expandIcon.setStyle("-fx-icon-color: -color-fg-muted;");
+
+//        subTaskBox = new ListBox<>(subTaskConstructor, subTaskDestructor);
+        subTaskBox = subTaskBoxConstructor.get();
+        subTaskBox.setAfterChangeRunnable(this::updateSubtaskBox);
+//        subTaskBox.setPadding(new Insets(0, 0, 0, 30));
+
+//        getChildren().setAll(new HBox(5, expandIconPane, nameBox));
+        nameBox.setSpacing(5);
+        nameBox.setAlignment(Pos.CENTER_LEFT);
+        nameBox.getChildren().addFirst(expandIconPane);
     }
 
-    protected TaskBoxBase(T task) {
-        this();
+//    public TaskBoxBase(Function<SubTask, T> subTaskConstructor, Consumer<T> subTaskDestructor, Task task) {
+    public TaskBoxBase(Supplier<ListBoxInterface<SubTask>> subTaskBoxConstructor, Task task) {
+        this(subTaskBoxConstructor);
         setTask(task);
     }
 
-    protected void setTask(T task) {
-        unbind();
+    public void setTask(Task task) {
+        super.setTask(task);
 
         if (task != null) {
-            nameText.textProperty().bind(task.nameProperty());
-            updateOverdue(task.isOverdue());
 
-            doneCheckBox.selectedProperty().bind(task.isDoneObservable());
-            doneCheckBox.setFireCallback(task::setDone);
+            expanded.bindBidirectional(task.subTasksExpandedProperty());
 
-            subscriptions = Subscription.combine(
-                    nameText.textProperty()::unbind,
-                    task.isOverdueObservable().subscribe(this::updateOverdue),
-                    doneCheckBox.selectedProperty()::unbind,
-                    () -> doneCheckBox.setFireCallback(null)
+            subTaskBox.setItems(task.getSubTasks());
+            updateSubtaskBox();
+
+            subs = Subscription.combine(
+                    () -> expanded.unbindBidirectional(task.subTasksExpandedProperty()),
+                    subTaskBox::unbind,
+                    expanded.subscribe(_ -> updateSubtaskBox())
             );
         }
     }
 
-    void unbind() {
-        subscriptions.unsubscribe();
+    public void unbind() {
+        super.unbind();
+        subs.unsubscribe();
     }
 
-    @Override
-    public ObservableList<Node> getChildren() {
-        return FXCollections.unmodifiableObservableList(super.getChildren());
-    }
-
-    protected ObservableList<Node> getVBoxChildren() {
-        return super.getChildren();
-    }
-
-    private void updateOverdue(boolean isOverdue) {
-        if (isOverdue) {
-            if (!nameText.getStyleClass().contains(Styles.DANGER))
-                nameText.getStyleClass().add(Styles.DANGER);
+    protected void updateSubtaskBox() {
+        boolean isEmpty = subTaskBox.getItems().isEmpty();
+        expandIcon.setVisible(!isEmpty);
+        if (isEmpty) {
+            getChildren().remove(subTaskBox.getNode());
         }
         else {
-            nameText.getStyleClass().remove(Styles.DANGER);
+            if (expanded.get()) {
+                expandIcon.setIconCode(FontAwesomeSolid.CARET_DOWN);
+                if(!getChildren().contains(subTaskBox.getNode()))
+                    getChildren().add(subTaskBox.getNode());
+            }
+            else {
+                expandIcon.setIconCode(FontAwesomeSolid.CARET_RIGHT);
+                getChildren().remove(subTaskBox.getNode());
+            }
         }
     }
 }

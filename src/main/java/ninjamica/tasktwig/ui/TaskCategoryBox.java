@@ -1,6 +1,5 @@
-package ninjamica.tasktwig.ui.util;
+package ninjamica.tasktwig.ui;
 
-import atlantafx.base.controls.Card;
 import atlantafx.base.theme.Styles;
 import javafx.geometry.Pos;
 import javafx.scene.control.ColorPicker;
@@ -26,11 +25,11 @@ public class TaskCategoryBox extends Region {
         HBox contentBox = new HBox(10, nameText);
         contentBox.setAlignment(Pos.BASELINE_LEFT);
 
-        Card taskCard = new Card();
-        taskCard.setBody(contentBox);
-        taskCard.getStyleClass().add(Styles.INTERACTIVE);
+//        Card taskCard = new Card();
+//        taskCard.setBody(contentBox);
+//        taskCard.getStyleClass().add(Styles.INTERACTIVE);
 
-        getChildren().add(taskCard);
+        getChildren().add(contentBox);
 
         setCategory(taskCategory);
     }

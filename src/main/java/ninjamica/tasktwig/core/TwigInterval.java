@@ -334,9 +334,9 @@ public sealed abstract class TwigInterval {
             this(Period.ofDays(1), RepeatPattern.REPEAT_ON_AFTER, false, TaskTwig.today());
         }
 
-        public PeriodInterval(TwigTask referenceTask) {
+        public PeriodInterval(Task referenceTask) {
             this();
-            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
+            Task.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
         }
 
         @Override
@@ -406,9 +406,9 @@ public sealed abstract class TwigInterval {
         private final ReadOnlyObjectWrapper<Byte> dayOfWeekMap;
         private final IntegerProperty weekInterval;
 
-        public WeekInterval(TwigTask referenceTask) {
+        public WeekInterval(Task referenceTask) {
             this(1, RepeatPattern.REPEAT_ON_AFTER, false);
-            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
+            Task.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
         }
 
         public WeekInterval(int weekInterval, RepeatPattern repeatPattern, boolean autoRepeat, DayOfWeek... days) {
@@ -445,8 +445,9 @@ public sealed abstract class TwigInterval {
             int dayOfWeek = occurrenceDate.getDayOfWeek().ordinal();
             int prevDayOfWeek = getPreviousDayOfWeek(dayOfWeek);
 
-            if (prevDayOfWeek == -1)
+            if (prevDayOfWeek == -1) {
                 return null;
+            }
 
             LocalDate prevDay = occurrenceDate.plusDays(prevDayOfWeek - dayOfWeek);
             if (prevDayOfWeek >= dayOfWeek)
@@ -533,7 +534,7 @@ public sealed abstract class TwigInterval {
 
         private int getPreviousDayOfWeek(int day) {
             for (int dayMinus = 1; dayMinus <= 7; dayMinus++) {
-                int prevDay = (day - dayMinus) % 7;
+                int prevDay = (day - dayMinus + 7) % 7;
                 if (isOnDay(prevDay))
                     return prevDay;
             }
@@ -594,9 +595,9 @@ public sealed abstract class TwigInterval {
             this(monthInterval, repeatPattern, autoRepeat, TaskTwig.today(), dates);
         }
 
-        public MonthInterval(TwigTask referenceTask) {
+        public MonthInterval(Task referenceTask) {
             this(1, RepeatPattern.REPEAT_ON_AFTER, false);
-            TwigTask.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
+            Task.setIntervalPatterns(this, referenceTask.getOccurrencePattern(), referenceTask.getExtendPattern());
         }
 
         @Override

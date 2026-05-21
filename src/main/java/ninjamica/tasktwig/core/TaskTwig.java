@@ -114,7 +114,6 @@ public class TaskTwig implements Serializable {
     private ObservableList<Workout> workoutRecords;
     private ObservableList<Exercise> exerciseList;
     private ObservableList<Task> taskList;
-    private ObservableList<TwigTask> twigTaskList;
     private ObservableList<TaskCategory> taskCategoryList;
     private ObservableList<TwigList> twigLists;
     private ObservableList<Routine> routineList;
@@ -340,10 +339,6 @@ public class TaskTwig implements Serializable {
 
     public ObservableList<Task> taskList() {
         return taskList;
-    }
-
-    public ObservableList<TwigTask> twigTaskList() {
-        return twigTaskList;
     }
 
     public ObservableList<TaskCategory> getTaskCategoryList() {
@@ -580,16 +575,8 @@ public class TaskTwig implements Serializable {
         }
 
         // Parse tasks
-        this.taskList = FXCollections.observableArrayList(task -> new Observable[] {task.intervalProperty(), task.inProgressObservable()});
         this.taskCategoryList = FXCollections.observableArrayList();
-//        try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
-//            Task.parseDataFile(parser, taskList, taskCategoryList);
-//        } catch (TwigJsonAssertException | JacksonIOException e) {
-//            System.err.println(e.getLocalizedMessage());
-//            this.taskList.clear();
-//        }
-
-        twigTaskList = FXCollections.observableArrayList(
+        taskList = FXCollections.observableArrayList(
                 task -> new Observable[] {task.isDoneObservable(), task.isTodayObservable()});
         try (JsonParser parser = mapper.createParser(TASK_FILE.file())) {
             parser.nextToken();
@@ -599,19 +586,22 @@ public class TaskTwig implements Serializable {
 
             assertEqual(parser.nextName(), "categories");
             parser.nextToken();
-            TaskCategory.clearCategoryMap();
             TaskTwig.parseJsonList(taskCategoryList, parser, node ->  new TaskCategory(node, version));
 
-            assertEqual(parser.nextName(), "tasks");
-            parser.nextToken();
-            parseJsonList(twigTaskList, parser, node -> new TwigTask(node, version));
+//            assertEqual(parser.nextName(), "tasks");
+//            parser.nextToken();
+//            parseJsonList(taskList, parser, node -> new Task(node, version));
+
+            for (TaskCategory category : taskCategoryList) {
+                taskList.addAll(category.tasksProperty());
+            }
 
         } catch (TwigJsonAssertException | JacksonIOException e) {
             System.err.println(e.getLocalizedMessage());
-            twigTaskList.clear();
+            taskList.clear();
         }
-//        for (Task task : taskList) {
-//            twigTaskList.add(new TwigTask(task));
+//        for (LegacyTask task : taskList) {
+//            taskList.add(new Task(task));
 //        }
 
         // Parse lists
@@ -645,14 +635,8 @@ public class TaskTwig implements Serializable {
         }
 
 //        for (Routine routine : routineList) {
-//            twigTaskList.add(new TwigTask(routine));
+//            taskList.add(new Task(routine));
 //        }
-
-        for (TwigTask twigTask : twigTaskList) {
-            if (twigTask.getCategory() != null) {
-                twigTask.getCategory().tasksProperty().add(twigTask);
-            }
-        }
 
         // Parse journals
         SortedMap<LocalDate, Journal> journals = new TreeMap<>();
@@ -707,29 +691,10 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case TASK -> {
-//                    try (JsonGenerator generator = mapper.createGenerator(TASK_FILE.file(), JsonEncoding.UTF8)) {
-//                        generator.writeStartObject();
-//
-//                        generator.writeNumberProperty("version", Task.VERSION);
-//
-//                        generator.writeArrayPropertyStart("categories");
-//                        for (TaskCategory category : taskCategoryList) {
-//                            generator.writePOJO(category);
-//                        }
-//                        generator.writeEndArray();
-//
-//                        generator.writeArrayPropertyStart("tasks");
-//                        for (Task task : taskList) {
-//                            generator.writePOJO(task);
-//                        }
-//                        generator.writeEndArray();
-//
-//                        generator.writeEndObject();
-//                    }
                     try (JsonGenerator generator = mapper.createGenerator(TASK_FILE.file(), JsonEncoding.UTF8)) {
                         generator.writeStartObject();
 
-                        generator.writeNumberProperty("version", TwigTask.VERSION);
+                        generator.writeNumberProperty("version", Task.VERSION);
 
                         generator.writeArrayPropertyStart("categories");
                         for (TaskCategory category : taskCategoryList) {
@@ -737,11 +702,11 @@ public class TaskTwig implements Serializable {
                         }
                         generator.writeEndArray();
 
-                        generator.writeArrayPropertyStart("tasks");
-                        for (TwigTask task : twigTaskList) {
-                            generator.writePOJO(task);
-                        }
-                        generator.writeEndArray();
+//                        generator.writeArrayPropertyStart("tasks");
+//                        for (Task task : taskList) {
+//                            generator.writePOJO(task);
+//                        }
+//                        generator.writeEndArray();
 
                         generator.writeEndObject();
                     }
@@ -876,12 +841,12 @@ public class TaskTwig implements Serializable {
                     }
                 }
                 case TASK ->  {
-                    digest.update((byte) Task.VERSION);
+                    digest.update((byte) LegacyTask.VERSION);
 
                     for (TaskCategory category : supplyWithFXSafety(() -> new ArrayList<>(taskCategoryList))) {
                         category.hashContents(digest);
                     }
-                    for (TwigTask task : supplyWithFXSafety(() -> new ArrayList<>(twigTaskList))) {
+                    for (Task task : supplyWithFXSafety(() -> new ArrayList<>(taskList))) {
                         task.hashContents(digest);
                     }
                 }

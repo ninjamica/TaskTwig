@@ -5,33 +5,33 @@ import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.value.ObservableIntegerValue;
 import javafx.collections.ObservableList;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.util.Subscription;
+import ninjamica.tasktwig.core.Task;
 import ninjamica.tasktwig.core.TaskCategory;
-import ninjamica.tasktwig.core.TwigTask;
 import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
-public class TaskCategoryView extends VBox {
+public class TaskCategoryViewBase extends VBox {
 
     private final FontIcon expandIcon = new FontIcon();
     private final Text catNameText = new Text();
-    private final Text countText = new Text();
-    private final ListBox<TwigTask, TaskBox> taskList;
+    protected final ListBoxInterface<Task> taskList;
 
-    private final BooleanProperty expanded = new SimpleBooleanProperty(true);
+    protected HBox nameBox;
+
+    protected final BooleanProperty expanded = new SimpleBooleanProperty(true);
     private Subscription subs = Subscription.EMPTY;
 
-    public TaskCategoryView() {
+    public TaskCategoryViewBase(Supplier<ListBoxInterface<Task>> taskBoxConstructor) {
         super(10);
 
         HBox expandIconPane = new HBox(expandIcon);
@@ -44,16 +44,16 @@ public class TaskCategoryView extends VBox {
         expandIcon.setStyle("-fx-icon-color: -color-fg-muted;");
 
         catNameText.getStyleClass().add(Styles.TITLE_3);
-        countText.getStyleClass().add(Styles.TEXT_SUBTLE);
-        countText.setVisible(false);
-        HBox nameBox = new HBox(10, expandIconPane, catNameText, countText);
+
+        nameBox = new HBox(10, expandIconPane, catNameText);
         nameBox.setAlignment(Pos.BASELINE_LEFT);
 
-        taskList = new ListBox<>(TaskBox::new, TaskBox::unbind);
+//        taskList = new ListBox<>(taskNodeConstructor, taskNodeDestructor);
+        taskList = taskBoxConstructor.get();
         taskList.setAfterChangeRunnable(this::updateTaskList);
-        taskList.setPadding(new Insets(0, 0, 0, 20));
+//        taskList.setPadding(new Insets(0, 0, 0, 20));
 
-        getChildren().addAll(nameBox, taskList);
+        getChildren().addAll(nameBox, taskList.getNode());
 
         nameBox.setOnMouseClicked(event -> {
             if (expandIcon.isVisible())
@@ -62,34 +62,26 @@ public class TaskCategoryView extends VBox {
         expanded.subscribe(_ -> updateTaskList());
     }
 
-    public TaskCategoryView(TaskCategory category, Predicate<TwigTask> filter) {
-        this();
+    public TaskCategoryViewBase(Supplier<ListBoxInterface<Task>> taskBoxConstructor,
+                                TaskCategory category, Predicate<Task> filter) {
+        this(taskBoxConstructor);
         setCategory(category, filter);
     }
 
-    public void setCategory(TaskCategory category, Predicate<TwigTask> filter) {
+    public void setCategory(TaskCategory category, Predicate<Task> filter) {
         if (category != null) {
             setCategory(category.tasksProperty(), filter, category.nameProperty(), category.colorProperty());
-
-            countText.setVisible(true);
-            subs = subs.and(Subscription.combine(
-                    category.doneTodayCountProperty().subscribe(
-                            count -> updateCountText(category.doneTodayCountProperty(), category.todayCountProperty())),
-                    category.todayCountProperty().subscribe(
-                            count -> updateCountText(category.doneTodayCountProperty(), category.todayCountProperty())),
-                    () -> countText.setVisible(false)
-            ));
         }
         else {
             unbind();
         }
     }
 
-    public void setCategory(ObservableList<TwigTask> tasks, Predicate<TwigTask> filter, StringProperty name, ObjectProperty<Color> color) {
+    public void setCategory(ObservableList<Task> tasks, Predicate<Task> filter, StringProperty name, ObjectProperty<Color> color) {
         unbind();
 
         if (tasks != null) {
-            ObservableList<TwigTask> filteredTasks = tasks.filtered(filter);
+            ObservableList<Task> filteredTasks = filter != null ? tasks.filtered(filter) : tasks;
 
             catNameText.textProperty().bind(name);
             catNameText.fillProperty().bind(color);
@@ -109,30 +101,22 @@ public class TaskCategoryView extends VBox {
         subs.unsubscribe();
     }
 
-    private void updateCountText(ObservableIntegerValue doneToday, ObservableIntegerValue total) {
-        updateCountText(doneToday.get(), total.get());
-    }
-
-    private void updateCountText(int doneToday, int total) {
-        countText.setText(doneToday + "/" + total);
-    }
-
-    private void updateTaskList() {
-        if (taskList.getItems() != null && expandIcon.isVisible()) {
+    protected void updateTaskList() {
+        if (taskList.getItems() != null) {
             boolean isEmpty = taskList.getItems().isEmpty();
             expandIcon.setVisible(!isEmpty);
             if (isEmpty) {
-                getChildren().remove(taskList);
+                getChildren().remove(taskList.getNode());
             }
             else {
                 if (expanded.get()) {
                     expandIcon.setIconCode(FontAwesomeSolid.CARET_DOWN);
-                    if (!getChildren().contains(taskList))
-                        getChildren().add(taskList);
+                    if (!getChildren().contains(taskList.getNode()))
+                        getChildren().add(taskList.getNode());
                 }
                 else {
                     expandIcon.setIconCode(FontAwesomeSolid.CARET_RIGHT);
-                    getChildren().remove(taskList);
+                    getChildren().remove(taskList.getNode());
                 }
             }
         }

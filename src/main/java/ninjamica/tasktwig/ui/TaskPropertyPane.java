@@ -14,11 +14,11 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
 import javafx.util.Subscription;
+import ninjamica.tasktwig.core.Task;
 import ninjamica.tasktwig.core.TaskCategory;
 import ninjamica.tasktwig.core.TaskTwig;
 import ninjamica.tasktwig.core.TwigInterval;
 import ninjamica.tasktwig.core.TwigInterval.*;
-import ninjamica.tasktwig.core.TwigTask;
 import ninjamica.tasktwig.ui.util.TimeInput;
 
 import java.time.DayOfWeek;
@@ -26,6 +26,7 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
@@ -34,8 +35,8 @@ public class TaskPropertyPane extends VBox {
     private TextField nameTextField;
     private Spinner<Integer> pointsSpinner;
     private ChoiceBox<TaskCategory> categoryChoiceBox;
-    private ChoiceBox<TwigTask.OccurrencePattern> occurrenceChoiceBox;
-    private ChoiceBox<TwigTask.ExtendPattern> extendChoiceBox;
+    private ChoiceBox<Task.OccurrencePattern> occurrenceChoiceBox;
+    private ChoiceBox<Task.ExtendPattern> extendChoiceBox;
     private ChoiceBox<IntervalType> intervalChoiceBox;
 
     private Card noDueDateCard;
@@ -68,7 +69,7 @@ public class TaskPropertyPane extends VBox {
 
     private Subscription subscriptions = Subscription.EMPTY;
     private Subscription typeSubs =  Subscription.EMPTY;
-    TwigTask task;
+    Task task;
 
     private enum IntervalType {
         NO_REPEAT,
@@ -92,7 +93,7 @@ public class TaskPropertyPane extends VBox {
         initializeUI(twig);
     }
 
-    public TaskPropertyPane(TaskTwig twig, TwigTask task) {
+    public TaskPropertyPane(TaskTwig twig, Task task) {
         this(twig);
         setTask(task);
     }
@@ -104,7 +105,7 @@ public class TaskPropertyPane extends VBox {
         nameCard.setHeader(new Label("Name:"));
         nameCard.setFocusTraversable(false);
         nameTextField = new TextField();
-        nameTextField.setPromptText("Task Name");
+        nameTextField.setPromptText("LegacyTask Name");
         nameTextField.setPrefWidth(230);
         nameCard.setBody(nameTextField);
 
@@ -129,8 +130,8 @@ public class TaskPropertyPane extends VBox {
         repeatCard.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
         repeatCard.setHeader(new Label("Repeat Pattern:"));
         repeatCard.setFocusTraversable(false);
-        occurrenceChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(TwigTask.OccurrencePattern.values()));
-        extendChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(TwigTask.ExtendPattern.values()));
+        occurrenceChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(Task.OccurrencePattern.values()));
+        extendChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(Task.ExtendPattern.values()));
         intervalChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(IntervalType.values()));
         repeatCard.setBody(new InputGroup(occurrenceChoiceBox, intervalChoiceBox, extendChoiceBox));
 
@@ -209,7 +210,7 @@ public class TaskPropertyPane extends VBox {
         dueTimeCard.setBody(dueTimeInput);
     }
 
-    public void setTask(TwigTask task) {
+    public void setTask(Task task) {
         this.task = task;
         subscriptions.unsubscribe();
         subscriptions = Subscription.EMPTY;
@@ -435,10 +436,11 @@ public class TaskPropertyPane extends VBox {
     }
 
     private void updateNextDateText(LocalDate nextDate) {
-        if (nextDate != null && !nextDate.equals(NoRepeat.NO_DATE))
-            nextDateLabel.setText("Next date: " + TaskTwigController.dateFormat.format(nextDate));
-        else
-            nextDateLabel.setText("");
+        nextDateLabel.setText(
+                "Next date: " + Optional.ofNullable(nextDate).map(TaskTwigController.dateFormat::format).orElse("null") +
+                "\nPrev date: " + Optional.ofNullable(task.getInterval().getPrevOccurrence()).map(TaskTwigController.dateFormat::format).orElse("null") +
+                "\nLast done: " + Optional.ofNullable(task.getLastDone()).map(TaskTwigController.dateFormat::format).orElse("null")
+        );
     }
 
     public static class CategoryChoiceBoxConverter extends StringConverter<TaskCategory> {

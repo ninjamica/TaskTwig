@@ -23,8 +23,8 @@ import java.util.Optional;
 
 @JsonIncludeProperties({"name", "lastDone", "dueTime"})
 @JsonPropertyOrder({"name", "lastDone", "dueTime"})
-public class TwigSubTask implements TaskInterface {
-    private final ObjectProperty<TwigTask> parentTask = new SimpleObjectProperty<>();
+public class SubTask implements TaskInterface {
+    private final ObjectProperty<Task> parentTask = new SimpleObjectProperty<>();
     private final StringProperty name = new SimpleStringProperty();
     private final ObjectProperty<LocalDate> lastDone = new SimpleObjectProperty<>();
     private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
@@ -32,31 +32,31 @@ public class TwigSubTask implements TaskInterface {
     private final BooleanBinding isDoneBinding;
     private final BooleanBinding isOverdueBinding;
 
-    public TwigSubTask(String name, LocalDate lastDone, LocalTime dueTime, TwigTask parentTask) {
+    public SubTask(String name, LocalDate lastDone, LocalTime dueTime, Task parentTask) {
         this.name.set(name);
         this.lastDone.set(lastDone);
         this.dueTime.set(dueTime);
         this.parentTask.set(parentTask);
 
         this.isTodayBinding = Bindings.createBooleanBinding(
-                () -> Optional.ofNullable(getParentTask()).map(TwigTask::isToday).orElse(false),
-                this.parentTask.flatMap(TwigTask::isTodayObservable)
+                () -> Optional.ofNullable(getParentTask()).map(Task::isToday).orElse(false),
+                this.parentTask.flatMap(Task::isTodayObservable)
         );
         this.isDoneBinding = Bindings.createBooleanBinding(
                 () -> Optional.ofNullable(getParentTask()).map(task -> task.isDone(getLastDone())).orElse(false),
-                this.parentTask.flatMap(TwigTask::isDoneObservable), this.lastDone
+                this.parentTask.flatMap(Task::isDoneObservable), this.lastDone
         );
         this.isOverdueBinding = Bindings.createBooleanBinding(
-                () -> Optional.ofNullable(getParentTask()).map(TwigTask::isOverdue).orElse(false),
-                this.parentTask.flatMap(TwigTask::isOverdueObservable)
+                () -> Optional.ofNullable(getParentTask()).map(Task::isOverdue).orElse(false),
+                this.parentTask.flatMap(Task::isOverdueObservable)
         );
     }
 
-    public TwigSubTask(String name, LocalTime dueTime, TwigTask parentTask) {
+    public SubTask(String name, LocalTime dueTime, Task parentTask) {
         this(name, null, dueTime, parentTask);
     }
 
-    public TwigSubTask(JsonNode node, int version) {
+    public SubTask(JsonNode node, int version) {
         String name = node.required("name").asString();
         LocalDate lastDone = node.optional("lastDone")
                 .map(lastDoneNode -> LocalDate.parse(lastDoneNode.asString())).orElse(null);
@@ -70,7 +70,7 @@ public class TwigSubTask implements TaskInterface {
         return Optional.ofNullable(getParentTask()).map(task -> task.isDone(getLastDone())).orElse(false);
     }
     public boolean isToday() {
-        return Optional.ofNullable(getParentTask()).map(TwigTask::isToday).orElse(false);
+        return Optional.ofNullable(getParentTask()).map(Task::isToday).orElse(false);
     }
     public boolean isOverdue() {
         return Optional.ofNullable(getParentTask()).map(task -> task.isOverdue(getLastDone())).orElse(false);
@@ -89,7 +89,7 @@ public class TwigSubTask implements TaskInterface {
     public BooleanExpression isOverdueObservable() {
         return isOverdueBinding;
     }
-    public ObservableList<TwigSubTask> getSubTasks() {
+    public ObservableList<SubTask> getSubTasks() {
         return FXCollections.emptyObservableList();
     }
 
@@ -107,7 +107,7 @@ public class TwigSubTask implements TaskInterface {
     public LocalDate getLastDone() {
         return TaskTwig.supplyWithFXSafety(lastDone::get);
     }
-    public TwigTask getParentTask() {
+    public Task getParentTask() {
         return TaskTwig.supplyWithFXSafety(parentTask::get);
     }
 
@@ -120,7 +120,7 @@ public class TwigSubTask implements TaskInterface {
     private void setLastDone(LocalDate lastDone) {
         TaskTwig.setWithFXSafety(this.lastDone::set, lastDone);
     }
-    void setParentTask(TwigTask parentTask) {
+    void setParentTask(Task parentTask) {
         this.parentTask.set(parentTask);
     }
 
@@ -140,7 +140,7 @@ public class TwigSubTask implements TaskInterface {
     }
 
     public String toString() {
-        return "TwigSubTask[" +
+        return "SubTask[" +
                 "name=" + getName() +
                 ", lastDone=" + getLastDone() +
                 ", dueTime=" + getDueTime() +

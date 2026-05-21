@@ -1,154 +1,418 @@
 package ninjamica.tasktwig.core;
 
-import atlantafx.base.theme.Styles;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIncludeProperties;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
+import javafx.beans.binding.BooleanExpression;
 import javafx.beans.property.*;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import tools.jackson.core.JsonParser;
 import tools.jackson.databind.JsonNode;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
-@JsonIncludeProperties({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
-@JsonPropertyOrder({"name", "category", "interval", "dueTime", "priority", "children", "expanded"})
-public class Task {
-    public static final int VERSION = 9;
-    private final StringProperty name = new SimpleStringProperty();
-    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-    private final ObjectProperty<TaskCategory> category = new SimpleObjectProperty<>();
-    private final ObjectProperty<TaskInterval> interval = new SimpleObjectProperty<>();
-    private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
-    private final IntegerProperty priority = new SimpleIntegerProperty();
+@JsonIncludeProperties({"name", "points", "occurrencePattern", "extend", "interval", "dueTime", "lastDone", "expanded", "subTasks"})
+@JsonPropertyOrder({"name", "points", "occurrencePattern", "extend", "interval", "dueTime", "lastDone", "expanded", "subTasks"})
+public class Task implements TaskInterface {
+    public static final int VERSION = 11;
 
-    @JsonInclude(value=JsonInclude.Include.NON_EMPTY)
-    private final ObservableList<Task> children = FXCollections.observableArrayList();
-    private boolean hasChildren = false;
-    @JsonInclude(value=JsonInclude.Include.NON_DEFAULT)
-    private final BooleanProperty expanded = new SimpleBooleanProperty();
-
-
-    public Task(String name, @Nullable TaskCategory category, TaskInterval interval, @Nullable LocalTime dueTime, int priority, List<Task> children, boolean expanded) {
-        this(name, category, interval, dueTime, priority);
-        this.children.addAll(children);
-        this.expanded.set(expanded);
+    public enum OccurrencePattern {
+        OCCUR_ON,
+        DUE_BY,
+        START_ON
     }
 
-    public Task(String name, @Nullable TaskCategory category, TaskInterval interval, @Nullable LocalTime dueTime, int priority) {
+    public enum ExtendPattern {
+        NO_EXTEND,
+        ON_COMPLETION,
+        FROM_COMPLETION,
+        AUTO
+    }
+
+    private final StringProperty name = new SimpleStringProperty();
+    private final ReadOnlyObjectWrapper<TaskCategory> category = new ReadOnlyObjectWrapper<>();
+    private final IntegerProperty points = new SimpleIntegerProperty();
+    private final ObjectProperty<OccurrencePattern> occurrencePattern = new SimpleObjectProperty<>();
+    private final ObjectProperty<ExtendPattern> extendPattern = new SimpleObjectProperty<>();
+    private final ObjectProperty<TwigInterval> interval = new SimpleObjectProperty<>();
+    private final ObjectProperty<LocalTime> dueTime = new SimpleObjectProperty<>();
+    private final ObservableList<SubTask> subTasks = FXCollections.observableArrayList();
+    private final BooleanProperty subTasksExpanded = new SimpleBooleanProperty();
+    private final ObjectProperty<LocalDate> lastDone = new SimpleObjectProperty<>();
+
+    private final BooleanBinding isDoneBinding;
+    private final BooleanBinding isTodayBinding;
+    private final BooleanBinding isOverdueBinding;
+    private final ObservableValue<LocalDate> nextDateBinding;
+
+    public Task(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
+                @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime,
+                @Nullable List<SubTask> subTasks, boolean subTasksExpanded, LocalDate lastDone) {
         this.name.set(name);
+        this.points.set(points);
         this.category.set(category);
+        this.occurrencePattern.set(occurrencePattern);
+        this.extendPattern.set(extendPattern);
         this.interval.set(interval);
         this.dueTime.set(dueTime);
-        this.priority.set(priority);
+        this.subTasksExpanded.set(subTasksExpanded);
+        this.lastDone.set(lastDone);
 
-        this.children.subscribe(() -> {
-           if (children.isEmpty()) {
-               expanded.set(false);
-               hasChildren = false;
-           }
-           else {
-               if (!hasChildren) {
-                   expanded.set(true);
-               }
-               hasChildren = true;
-           }
-        });
+        if (subTasks != null) {
+            this.subTasks.addAll(subTasks);
+            this.subTasks.forEach(subTask -> subTask.setParentTask(this));
+        }
+
+        this.occurrencePattern.subscribe(occurrence -> updateIntervalPatterns(occurrence, getExtendPattern()));
+        this.extendPattern.subscribe(extend -> updateIntervalPatterns(getOccurrencePattern(), extend));
+
+        this.isDoneBinding = Bindings.createBooleanBinding(this::isDone,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable()
+        );
+        this.isTodayBinding = Bindings.createBooleanBinding(this::isToday,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable(),
+                this.occurrencePattern
+        );
+        this.isOverdueBinding = Bindings.createBooleanBinding(this::isOverdue,
+                this.interval.flatMap(TwigInterval::occurrenceObservable), this.lastDone, TaskTwig.todayObservable(),
+                this.occurrencePattern
+        );
+        this.nextDateBinding = this.interval.flatMap(TwigInterval::occurrenceObservable);
+
+//        setCategory(category);
     }
 
-    public Task(String name, TaskInterval interval, int priority) {
-        this(name, null, interval, null, priority);
+    public Task(String name, TaskCategory category, int points, @NotNull OccurrencePattern occurrencePattern,
+                @NotNull ExtendPattern extendPattern, @NotNull TwigInterval interval, @Nullable LocalTime dueTime,
+                SubTask... subTasks) {
+        this(name, category, points, occurrencePattern, extendPattern, interval, dueTime, List.of(subTasks), false, null);
     }
 
-    public Task(JsonNode node, int version) {
-        this(node, version, true);
-    }
-
-    public Task(JsonNode node, int version, boolean isParent) {
+    public Task(JsonNode node, int version, TaskCategory category) {
         String name;
-        TaskCategory category = null;
-        TaskInterval interval;
-        LocalTime dueTime = null;
-        int priority = 0;
-        List<Task> children = new ArrayList<>();
-        boolean expanded = false;
+        TaskCategory taskCategory;
+        int points;
+        OccurrencePattern occurrencePattern;
+        ExtendPattern extendPattern;
+        TwigInterval interval;
+        LocalTime dueTime;
+        List<SubTask> subTasks = new ArrayList<>();
+        boolean expanded;
+        LocalDate lastDone;
 
         switch (version) {
-            case 9:
-                JsonNode categoryNode = node.get("category");
-                if (isParent && categoryNode != null)
-                    category = TaskCategory.getCategoryFromName(categoryNode.asString());
-            case 8:
-                JsonNode expandedNode = node.get("expanded");
-                if (expandedNode != null)
-                    expanded = expandedNode.asBoolean();
-
-            case 7:
-                priority = node.get("priority").asInt();
-
-            case 3, 4, 5, 6:
-                name = node.get("name").asString();
-                interval = TaskInterval.parseFromJson(node.get("interval"), version);
-
-                JsonNode endNode = node.get("dueTime");
-                if (!endNode.isNull())
-                    dueTime = LocalTime.parse(endNode.asString());
-
-                JsonNode childrenNode = node.get("children");
-                if (childrenNode != null) {
-                    for (JsonNode child : childrenNode) {
-                        children.add(new Task(child, version, false));
-                    }
-                }
-                break;
-
-            default:
-                System.err.println("Unsupported Task version: " + version);
-                throw new TaskTwig.TwigJsonVersionException("Unsupported Task version: " + version);
+            case 11 -> {
+                taskCategory = category;
+            }
+            case 10 -> {
+                taskCategory = node.optional("category")
+                        .map(catNode -> TaskCategory.getCategoryFromName(catNode.asString()))
+                        .orElse(null);
+            }
+            default -> throw new TaskTwig.TwigJsonVersionException("Invalid version for Task: " + version);
         }
 
-        this(name, category, interval, dueTime, priority, children, expanded);
+        name = node.required("name").asString();
+        points = node.required("points").asInt();
+        occurrencePattern = OccurrencePattern.valueOf(node.required("occurrencePattern").asString());
+        extendPattern = ExtendPattern.valueOf(node.required("extend").asString());
+        interval = TwigInterval.parseFromJson(node.required("interval"), version);
+
+        dueTime = node.optional("dueTime")
+                .map(dueTimeNode -> LocalTime.parse(dueTimeNode.asString())).orElse(null);
+
+        node.optional("subTasks").ifPresent(subTaskNode -> {
+            for (JsonNode subTask : subTaskNode.asArray()) {
+                subTasks.add(new SubTask(subTask, version));
+            }
+        });
+
+        expanded = node.optional("expanded").map(JsonNode::asBoolean).orElse(false);
+
+        lastDone = node.optional("lastDone")
+                .map(lastDoneNode -> LocalDate.parse(lastDoneNode.asString())).orElse(null);
+
+        this(name, taskCategory, points, occurrencePattern, extendPattern, interval, dueTime, subTasks, expanded, lastDone);
+
+        if (version == 10) {
+            this.category.get().tasksProperty().add(this);
+        }
     }
 
-    public static void parseDataFile(JsonParser parser, List<Task> taskList, List<TaskCategory> categoryList) {
-        parser.nextToken();
+    public Task(LegacyTask task) {
+        ExtendPattern extendPattern;
+        TwigInterval interval;
+        List<SubTask> subTasks = new ArrayList<>();
 
-        TaskTwig.requireJsonProperty(parser, "version");
-        int version =  parser.nextIntValue(0);
+        var taskInterval = task.getInterval();
 
-        if (version >= 9) {
-            TaskCategory.clearCategoryMap();
-            TaskTwig.requireJsonProperty(parser, "categories");
-            parser.nextToken();
-            parser.skipChildren();
-//            TaskTwig.parseJsonList(categoryList, parser, node ->  new TaskCategory(node, version));
+        String name =  task.getName();
+        TaskCategory category = task.getCategory();
+        OccurrencePattern occurrencePattern = OccurrencePattern.DUE_BY;
+        LocalTime dueTime = task.getDueTime();
+        boolean expanded = task.isExpanded();
+        LocalDate lastDone = taskInterval.getLastDone();
 
-//            if(TaskCategory.getCategoryFromName("Other") == null)
-//                categoryList.add(new TaskCategory("Other", Paint.valueOf("ffffff")));
+        switch (taskInterval) {
+            case TaskInterval.NoInterval noInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.NoRepeat(TwigInterval.NoRepeat.NO_DATE);
+            }
+            case TaskInterval.SingleDateInterval singleDateInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.NoRepeat(singleDateInterval.getDueDate());
+            }
+            case TaskInterval.DayInterval dayInterval -> {
+                if (dayInterval.isRepeatFromLastDone()) {
+                    extendPattern = ExtendPattern.FROM_COMPLETION;
+                    interval = new TwigInterval.PeriodInterval(
+                            Period.ofDays(dayInterval.getInterval()),
+                            TwigInterval.RepeatPattern.FROM_REF,
+                            false, lastDone
+                    );
+                }
+                else {
+                    extendPattern = ExtendPattern.AUTO;
+                    interval = new TwigInterval.PeriodInterval(
+                            Period.ofDays(dayInterval.getInterval()),
+                            TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                            true, lastDone
+                    );
+                }
+            }
+            case TaskInterval.WeekInterval weekInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.WeekInterval(
+                        1, weekInterval.getDayOfWeekBitmap(),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone
+                );
+            }
+            case TaskInterval.MonthInterval monthInterval -> {
+                extendPattern = ExtendPattern.AUTO;
+                interval = new TwigInterval.MonthInterval(
+                        1, TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone, monthInterval.getDates().toArray(Integer[]::new)
+                );
+            }
         }
 
-        TaskTwig.requireJsonProperty(parser, "tasks");
-        parser.nextToken();
-        TaskTwig.parseJsonList(taskList, parser, node -> new Task(node, version));
-//        for (Task task : taskList) {
-//            if (task.getCategory() == null) {
-//                task.setCategory(categoryList.getLast());
-//            }
-//        }
+        for (LegacyTask subTask : task.getChildrenJson()) {
+            subTasks.add(new SubTask(
+                    subTask.getName(),
+                    subTask.isDone() ? TaskTwig.today() : null,
+                    subTask.getDueTime(),
+                    null
+            ));
+        }
+
+        this(name, category, 1, occurrencePattern, extendPattern, interval, dueTime, subTasks, expanded, lastDone);
+    }
+
+    public Task(Routine routine) {
+        TwigInterval interval;
+        LocalDate lastDone;
+
+        String name = routine.getName();
+        TaskCategory category = TaskCategory.getCategoryFromName("Routines");
+        OccurrencePattern occurrencePattern = OccurrencePattern.OCCUR_ON;
+        ExtendPattern extendPattern = ExtendPattern.AUTO;
+        LocalTime dueTime = routine.getDueTime();
+
+        switch (routine.getInterval()) {
+            case RoutineInterval.DailyInterval dailyInterval -> {
+                lastDone = dailyInterval.getLastDone();
+                interval = new TwigInterval.DailyInterval();
+            }
+            case RoutineInterval.DayInterval dayInterval -> {
+                lastDone = dayInterval.getLastDone();
+                interval = new TwigInterval.PeriodInterval(
+                        Period.ofDays(dayInterval.getInterval()),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER,
+                        true, lastDone
+                );
+            }
+            case RoutineInterval.WeekInterval weekInterval -> {
+                lastDone = weekInterval.getLastDone();
+                interval = new TwigInterval.WeekInterval(
+                        1, weekInterval.getBitmap(),
+                        TwigInterval.RepeatPattern.REPEAT_ON_AFTER, true, lastDone
+                );
+            }
+        }
+
+        this(name, category, 1, occurrencePattern, extendPattern, interval, dueTime, null, false, lastDone);
+    }
+
+    static void setIntervalPatterns(TwigInterval interval, OccurrencePattern occurrence, ExtendPattern extend) {
+        if (interval instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
+
+            repeatInterval.setAutoRepeat(extend == ExtendPattern.AUTO);
+
+            if (Objects.requireNonNull(extend) == ExtendPattern.NO_EXTEND) {
+                repeatInterval.setRepeatPattern(TwigInterval.RepeatPattern.FROM_REF);
+            }
+            else {
+                repeatInterval.setRepeatPattern(
+                        switch (occurrence) {
+                            case OCCUR_ON, DUE_BY -> TwigInterval.RepeatPattern.REPEAT_ON_AFTER;
+                            case START_ON -> TwigInterval.RepeatPattern.REPEAT_ON_BEFORE;
+                        }
+                );
+            }
+        }
+    }
+
+    private void updateIntervalPatterns(OccurrencePattern occurrence, ExtendPattern extend) {
+        setIntervalPatterns(getInterval(), occurrence, extend);
+    }
+
+    /**
+     * Represents whether the task should show up in the Today Pane for `TaskTwig.today()`. Completed tasks are not
+     * included here and are checked for separately.
+     * @return `true` if the task should appear in Today Pane and is not done
+     */
+    public boolean isToday() {
+        if (isDone())
+            return false;
+
+        LocalDate next = getInterval().getNextOccurrence();
+        if (next == null)
+            return false;
+
+        LocalDate today = TaskTwig.today();
+        switch (getOccurrencePattern()) {
+            case OCCUR_ON -> {
+                return today.equals(next);
+            }
+            case DUE_BY -> {
+                return true;
+            }
+            case START_ON -> {
+                return today.isAfter(next);
+            }
+            case null -> throw new IllegalStateException("Illegal occurrence pattern (likely null)");
+        }
+    }
+
+    /**
+     * Returns whether the task has been marked as completed <b>as of today</b>
+     * @return
+     */
+    public boolean isDone() {
+        return isDone(getLastDone());
+    }
+
+    boolean isDone(LocalDate lastDone) {
+        if (lastDone == null)
+            return false;
+
+        if (lastDone.equals(TaskTwig.today()))
+            return true;
+
+        LocalDate prevOccurrence = getInterval().getPrevOccurrence();
+        if (prevOccurrence == null)
+            return true;
+
+        return lastDone.isAfter(prevOccurrence);
+    }
+
+    public boolean isDoneToday() {
+        return TaskTwig.today().equals(getLastDone());
+    }
+
+    public void setDone(boolean done) {
+        LocalDate today = TaskTwig.today();
+        setLastDone(done ? today : null);
+
+        TwigInterval interval = getInterval();
+        if (done) {
+            if(interval instanceof TwigInterval.ConfigRepeatInterval repeatInterval) {
+                switch (getExtendPattern()) {
+                    case NO_EXTEND, ON_COMPLETION -> repeatInterval.startFromNext();
+                    case FROM_COMPLETION -> repeatInterval.startFrom(today);
+                }
+            }
+        }
+    }
+
+    public boolean isOverdue() {
+        return isOverdue(getLastDone());
+    }
+
+    boolean isOverdue(LocalDate lastDone) {
+        switch (getOccurrencePattern()) {
+            case OCCUR_ON, START_ON -> {
+                return false;
+            }
+            case DUE_BY -> {
+                if (isDone(lastDone))
+                    return false;
+
+                LocalDate nextDue = getInterval().getNextOccurrence();
+                if (nextDue == null)
+                    return false;
+
+                return TaskTwig.today().isAfter(nextDue);
+            }
+            case null -> throw new IllegalStateException("Illegal occurrence pattern (likely null)");
+        }
+    }
+
+    public BooleanExpression isTodayObservable() {
+        return this.isTodayBinding;
+    }
+    public BooleanExpression isDoneObservable() {
+        return this.isDoneBinding;
+    }
+    public BooleanExpression isOverdueObservable() {
+        return this.isOverdueBinding;
+    }
+    public ObservableValue<LocalDate> nextDateObservable() {
+        return nextDateBinding;
     }
 
     public StringProperty nameProperty() {
         return name;
+    }
+    public ReadOnlyObjectProperty<TaskCategory> categoryProperty() {
+        return category.getReadOnlyProperty();
+    }
+    public IntegerProperty pointsProperty() {
+        return points;
+    }
+    public ObjectProperty<OccurrencePattern> occurrencePatternProperty() {
+        return occurrencePattern;
+    }
+    public ObjectProperty<ExtendPattern> extendPatternProperty() {
+        return extendPattern;
+    }
+    public ObjectProperty<TwigInterval> intervalProperty() {
+        return interval;
+    }
+    public ObservableList<SubTask> getSubTasks() {
+        return subTasks;
+    }
+    public BooleanProperty subTasksExpandedProperty() {
+        return subTasksExpanded;
+    }
+    public ObjectProperty<LocalTime> dueTimeProperty() {
+        return dueTime;
     }
 
     @JsonGetter("name")
@@ -156,172 +420,131 @@ public class Task {
         return TaskTwig.supplyWithFXSafety(name::get);
     }
 
-    public ObjectProperty<TaskCategory> categoryProperty() {
-        return category;
-    }
-
     public TaskCategory getCategory() {
         return TaskTwig.supplyWithFXSafety(category::get);
     }
-    public void setCategory(TaskCategory category) {
-        TaskTwig.runWithFXSafety(() -> {
-            this.category.set(category);
-        });
-    }
 
     @JsonGetter("category")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public String getCategoryName() {
-        TaskCategory category = getCategory();
-        return category == null ? null : category.getName();
+//        return TaskTwig.supplyWithFXSafety(() -> Optional.ofNullable(category.get()).map(TaskCategory::getName).orElse(""));
+        return TaskTwig.supplyWithFXSafety(() -> category.get().getName());
     }
 
-    public ObjectProperty<TaskInterval> intervalProperty() {
-        return interval;
+    @JsonGetter("points")
+    public int getPoints() {
+        return TaskTwig.supplyWithFXSafety(points::get);
+    }
+
+    @JsonGetter("occurrencePattern")
+    public OccurrencePattern getOccurrencePattern() {
+        return TaskTwig.supplyWithFXSafety(occurrencePattern::get);
+    }
+
+    @JsonGetter("extend")
+    public ExtendPattern getExtendPattern() {
+        return TaskTwig.supplyWithFXSafety(extendPattern::get);
     }
 
     @JsonGetter("interval")
-    public TaskInterval getInterval() {
+    public TwigInterval getInterval() {
         return TaskTwig.supplyWithFXSafety(interval::get);
     }
 
-    public ObjectProperty<LocalTime> dueTimeProperty() {
-        return dueTime;
+    public LocalDate getNextDate() {
+        return nextDateBinding.getValue();
+    }
+
+    @JsonGetter("subTasks")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public  List<SubTask> getSubTasksJson() {
+        return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(subTasks));
+    }
+
+    @JsonGetter("expanded")
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    public boolean isExpanded() {
+        return TaskTwig.supplyWithFXSafety(subTasksExpanded::get);
     }
 
     @JsonGetter("dueTime")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public LocalTime getDueTime() {
         return TaskTwig.supplyWithFXSafety(dueTime::get);
     }
 
-    public IntegerProperty priorityProperty() {
-        return priority;
+    public void setName(String name) {
+        TaskTwig.setWithFXSafety(this.name::set, name);
+    }
+    public void setCategory(@Nullable TaskCategory category) {
+        TaskTwig.runWithFXSafety(() -> {
+            if (this.category.get() != category) {
+                if (this.category.get() != null)
+                    this.category.get().tasksProperty().remove(this);
+
+                this.category.set(category);
+
+                if (category != null)
+                    category.tasksProperty().add(this);
+            }
+        });
+    }
+    public void setPoints(int points) {
+        TaskTwig.setWithFXSafety(this.points::set, points);
+    }
+    public void setOccurrencePattern(@NotNull Task.OccurrencePattern occurrencePattern) {
+        TaskTwig.setWithFXSafety(this.occurrencePattern::set, occurrencePattern);
+    }
+    public void setExtendPattern(@NotNull ExtendPattern extendPattern) {
+        TaskTwig.setWithFXSafety(this.extendPattern::set, extendPattern);
+    }
+    public void setInterval(@NotNull TwigInterval interval) {
+        TaskTwig.setWithFXSafety(this.interval::set, interval);
+    }
+    public void setSubTasksExpanded(boolean expanded) {
+        TaskTwig.setWithFXSafety(this.subTasksExpanded::set, expanded);
+    }
+    public void setDueTime(@Nullable LocalTime dueTime) {
+        TaskTwig.setWithFXSafety(this.dueTime::set, dueTime);
     }
 
-    @JsonGetter("priority")
-    public int getPriority() {
-        return TaskTwig.supplyWithFXSafety(priority::get);
+    @JsonGetter("lastDone")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public LocalDate getLastDone() {
+        return TaskTwig.supplyWithFXSafety(lastDone::get);
     }
-
-    public ObservableList<Task> getChildren() {
-        return children;
-    }
-
-    @JsonGetter("children")
-    public List<Task> getChildrenJson() {
-        if (TaskTwig.notFxThread())
-            return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(children));
-        else
-            return children;
-    }
-
-    public BooleanProperty expandedProperty() {
-        return expanded;
-    }
-
-    @JsonGetter("expanded")
-    public boolean isExpanded() {
-        return TaskTwig.supplyWithFXSafety(expanded::get);
-    }
-
-    public ObservableValue<Boolean> doneObservable() {
-        return intervalProperty().flatMap(TaskInterval::doneObservable);
-    }
-
-    public boolean isDone() {
-        return interval.get().isDone();
-    }
-
-    public void setDone(boolean done) {
-        interval.get().setDone(done);
-
-        List<String> journalTasks = TaskTwig.instance().todaysJournal().completedTasks();
-        if (done) {
-            if (!journalTasks.contains(this.getName()))
-                journalTasks.add(this.getName());
-        } else {
-            journalTasks.remove(this.getName());
-        }
-    }
-
-    public void toggleDone() {
-        setDone(!isDone());
-    }
-
-    public ObservableValue<LocalDate> nextDueObservable() {
-        return intervalProperty().flatMap(TaskInterval::nextDueObservable);
-    }
-
-    public ObservableValue<Boolean> inProgressObservable() {
-        return intervalProperty().flatMap(TaskInterval::inProgressObservable);
-    }
-
-    public boolean inProgress() {
-        return getInterval().inProgress();
-    }
-
-    public static String priorityStyleClass(int priority) {
-        return switch (priority) {
-            case 1 -> Styles.ACCENT;
-            case 2 -> Styles.SUCCESS;
-            case 3 -> Styles.WARNING;
-            case 4 -> Styles.DANGER;
-            default -> Styles.TEXT_NORMAL;
-        };
-    }
-
-    public static String[] priorityStyleClassList() {
-        return new String[] {Styles.TEXT_NORMAL, Styles.ACCENT, Styles.SUCCESS, Styles.WARNING, Styles.DANGER, Styles.TEXT_MUTED};
+    private void setLastDone(@Nullable LocalDate lastDone) {
+        TaskTwig.setWithFXSafety(this.lastDone::set, lastDone);
     }
 
     public void hashContents(MessageDigest digest) {
         digest.update(getName().getBytes(StandardCharsets.UTF_8));
-
-        TaskCategory category = getCategory();
-        if (category != null)
-            digest.update(category.getName().getBytes(StandardCharsets.UTF_8));
-
+        digest.update(getCategoryName().getBytes(StandardCharsets.UTF_8));
         getInterval().hashContents(digest);
+        digest.update(ByteBuffer.allocate(4).putInt(getPoints()).array());
+        digest.update((byte) getOccurrencePattern().ordinal());
+        digest.update((byte) getExtendPattern().ordinal());
 
-        LocalTime dueTime = getDueTime();
-        if (dueTime != null)
-            digest.update(getDueTime().toString().getBytes(StandardCharsets.UTF_8));
+        Optional.ofNullable(getDueTime()).ifPresent(
+                time -> digest.update(time.toString().getBytes(StandardCharsets.UTF_8)));
+        Optional.ofNullable(getLastDone()).ifPresent(
+                date -> digest.update(date.toString().getBytes(StandardCharsets.UTF_8)));
 
-        digest.update((byte) getPriority());
+        getSubTasksJson().forEach(subTask -> subTask.hashContents(digest));
 
-        for (Task task : children) {
-            task.hashContents(digest);
-        }
-
-        digest.update((byte) (isExpanded() ? 1 : 0));
+        digest.update(isExpanded() ? (byte) 1 : (byte) 0);
     }
 
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == this) return true;
-        if (obj == null || obj.getClass() != this.getClass()) return false;
-        var that = (Task) obj;
-        return Objects.equals(this.name.get(), that.name.get()) &&
-                Objects.equals(this.interval.get(), that.interval.get()) &&
-                Objects.equals(this.dueTime.get(), that.dueTime.get()) &&
-                Objects.equals(this.priority.get(), that.priority.get()) &&
-                Objects.equals(this.children, that.children);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(name, interval, dueTime);
-    }
-
-    @Override
     public String toString() {
         return "Task[" +
-                "name=" + name + ", " +
-                "interval=" + interval + ", " +
-                "dueTime=" + dueTime + ", " +
-                "priority=" + priority + ", " +
-                "children=" + children + ']';
+                "name=" + getName() +
+                ", category=" + Optional.ofNullable(getCategory()).map(TaskCategory::getName).orElse("null") +
+                ", interval=" + getInterval() +
+                ", lastDone=" + getLastDone() +
+                ", subTasks=" + getSubTasks() +
+                ", occurrencePattern=" + getOccurrencePattern() +
+                ", extendPattern=" + getExtendPattern() +
+                ", dueTime=" + getDueTime() +
+                "]";
     }
-
-
 }

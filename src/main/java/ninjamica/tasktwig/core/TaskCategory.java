@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@JsonIncludeProperties({"name", "paint"})
+@JsonIncludeProperties({"name", "paint", "tasks"})
 public class TaskCategory {
 
     private static final Map<String, TaskCategory> categoryMap = new HashMap<>();
@@ -36,7 +36,7 @@ public class TaskCategory {
 
     private final StringProperty name = new SimpleStringProperty();
     private final ObjectProperty<Color> color = new SimpleObjectProperty<>();
-    private final ObservableList<TwigTask> tasks = FXCollections.observableArrayList(
+    private final ObservableList<Task> tasks = FXCollections.observableArrayList(
             task -> new Observable[] {task.isTodayObservable(), task.isDoneObservable()}
     );
     private final IntegerExpression todayCount;
@@ -48,10 +48,10 @@ public class TaskCategory {
         categoryMap.put(name, this);
 
         todayCount = Bindings.createIntegerBinding(
-//                () -> (int) (getTasks().stream().filter(TwigTask::isToday).count()),
+//                () -> (int) (getTasks().stream().filter(Task::isToday).count()),
                 () -> {
                     int count = 0;
-                    for (TwigTask task : getTasks()) {
+                    for (Task task : getTasks()) {
                         if (task.isToday() || task.isDoneToday())
                             count++;
                     }
@@ -61,10 +61,10 @@ public class TaskCategory {
         );
 
         doneTodayCount = Bindings.createIntegerBinding(
-//                () -> (int) (getTasks().stream().filter(TwigTask::isDoneToday).count()),
+//                () -> (int) (getTasks().stream().filter(Task::isDoneToday).count()),
                 () -> {
                     int count = 0;
-                    for (TwigTask task : getTasks()) {
+                    for (Task task : getTasks()) {
                         if (task.isDoneToday())
                             count++;
                     }
@@ -77,7 +77,7 @@ public class TaskCategory {
         String name;
         Color color;
         switch (version) {
-            case 9, 10:
+            case 9, 10, 11:
                 name = node.get("name").asString();
                 color = Color.valueOf(node.get("paint").asString());
                 break;
@@ -86,6 +86,16 @@ public class TaskCategory {
                 throw new TaskTwig.TwigJsonVersionException("Unsupported Task version for having categories: " + version);
         }
         this(name, color);
+
+        System.out.println("Built category: " + this);
+
+        switch (version) {
+            case 11:
+                for (JsonNode taskNode : node.get("tasks").asArray()) {
+                    tasks.add(new Task(taskNode, version, this));
+                    System.out.println("Added task: " + tasks.getLast());
+                }
+        }
     }
 
     public StringProperty nameProperty() {
@@ -118,11 +128,12 @@ public class TaskCategory {
         return getColor().toString();
     }
 
-    public ObservableList<TwigTask> tasksProperty() {
+    public ObservableList<Task> tasksProperty() {
         return tasks;
     }
 
-    public List<TwigTask> getTasks() {
+    @JsonGetter("tasks")
+    public List<Task> getTasks() {
         return TaskTwig.supplyWithFXSafety(() -> new ArrayList<>(tasks));
     }
 
